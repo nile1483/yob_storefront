@@ -1,0 +1,192 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:category_name",
+ "creation": "2026-01-26 13:34:31.019993",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_8ds5",
+  "lft",
+  "column_break_jeva",
+  "rgt",
+  "column_break_fsoq",
+  "old_parent",
+  "section_break_wtir",
+  "is_group",
+  "category_name",
+  "slug",
+  "parent_category",
+  "display_order",
+  "column_break_sfvo",
+  "is_active",
+  "thumbnail",
+  "thumbnail_preview",
+  "section_break_ziup",
+  "meta_title",
+  "column_break_iuat",
+  "meta_description",
+  "section_break_tetu",
+  "description",
+  "banner",
+  "banner_preview"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_8ds5",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "lft",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Left",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rgt",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Right",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_group",
+   "fieldtype": "Check",
+   "label": "Is Group"
+  },
+  {
+   "fieldname": "old_parent",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Old Parent",
+   "options": "Category"
+  },
+  {
+   "fieldname": "parent_category",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Parent Category",
+   "options": "Category"
+  },
+  {
+   "fieldname": "column_break_jeva",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_fsoq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_wtir",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "category_name",
+   "fieldtype": "Data",
+   "label": "Category Name",
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_sfvo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "slug",
+   "fieldtype": "Data",
+   "label": "Slug",
+   "unique": 1
+  },
+  {
+   "fieldname": "thumbnail",
+   "fieldtype": "Attach Image",
+   "label": "Thumbnail"
+  },
+  {
+   "fieldname": "display_order",
+   "fieldtype": "Int",
+   "label": "Display Order"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active"
+  },
+  {
+   "fieldname": "section_break_ziup",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_iuat",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "meta_title",
+   "fieldtype": "Data",
+   "label": "Meta Title"
+  },
+  {
+   "fieldname": "meta_description",
+   "fieldtype": "Small Text",
+   "label": "Meta Description"
+  },
+  {
+   "fieldname": "section_break_tetu",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "banner",
+   "fieldtype": "Attach Image",
+   "label": "Banner"
+  },
+  {
+   "fieldname": "thumbnail_preview",
+   "fieldtype": "HTML",
+   "label": "Thumbnail Preview"
+  },
+  {
+   "fieldname": "banner_preview",
+   "fieldtype": "HTML",
+   "label": "Banner Preview"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "HTML Editor",
+   "label": "Description"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_tree": 1,
+ "links": [],
+ "modified": "2026-03-11 19:52:44.521418",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "Category",
+ "naming_rule": "By fieldname",
+ "nsm_parent_field": "parent_category",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,286 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "CART-.YYYY.-.MM.-.####",
+ "creation": "2026-02-14 12:17:01.551549",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "cart_info_section",
+  "company",
+  "customer",
+  "order_type",
+  "column_break_dlyx",
+  "company_address",
+  "user",
+  "pricing_taxes_section",
+  "column_break_zitf",
+  "column_break_oain",
+  "currency",
+  "column_break_iwwm",
+  "selling_price_list",
+  "contact_and_address_section",
+  "contact_person",
+  "billing_address",
+  "column_break_haoi",
+  "is_shippable",
+  "shipping_address",
+  "cart_items_section",
+  "items",
+  "totals_section",
+  "total_quantity",
+  "net_total",
+  "tax_total",
+  "grand_total",
+  "column_break_rkpl",
+  "coupon_code",
+  "coupon_discount",
+  "total_discount",
+  "order_information_section",
+  "sales_order",
+  "ordered_on",
+  "column_break_zaqa",
+  "status",
+  "checkout_by",
+  "connections_tab"
+ ],
+ "fields": [
+  {
+   "fieldname": "cart_info_section",
+   "fieldtype": "Section Break",
+   "label": "Cart Info"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "default": "Shayona Technology",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nOrdered",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_dlyx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "INR",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals & Coupon & Discount"
+  },
+  {
+   "fieldname": "total_quantity",
+   "fieldtype": "Int",
+   "label": "Total Quantity"
+  },
+  {
+   "fieldname": "tax_total",
+   "fieldtype": "Currency",
+   "label": "Tax Total"
+  },
+  {
+   "fieldname": "net_total",
+   "fieldtype": "Currency",
+   "label": "Net Total"
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "label": "Grand Total"
+  },
+  {
+   "fieldname": "cart_items_section",
+   "fieldtype": "Section Break",
+   "label": "Cart Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Cart Item"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User"
+  },
+  {
+   "description": "Stores applied coupon",
+   "fieldname": "coupon_code",
+   "fieldtype": "Data",
+   "label": "Coupon Code"
+  },
+  {
+   "default": "0",
+   "description": "Determines if shipping address is required",
+   "fieldname": "is_shippable",
+   "fieldtype": "Check",
+   "label": "Is Shippable"
+  },
+  {
+   "fieldname": "billing_address",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Billing Address",
+   "options": "Address"
+  },
+  {
+   "depends_on": "eval:doc.is_shippable==1",
+   "fieldname": "shipping_address",
+   "fieldtype": "Link",
+   "label": "Shipping Address",
+   "options": "Address"
+  },
+  {
+   "fieldname": "column_break_haoi",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "contact_person",
+   "fieldtype": "Link",
+   "label": "Contact Person",
+   "options": "Contact"
+  },
+  {
+   "description": "Final calculated coupon discount",
+   "fieldname": "coupon_discount",
+   "fieldtype": "Currency",
+   "label": "Coupon Discount"
+  },
+  {
+   "fieldname": "total_discount",
+   "fieldtype": "Currency",
+   "label": "Total Discount"
+  },
+  {
+   "fieldname": "column_break_rkpl",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company_address",
+   "fieldtype": "Link",
+   "label": "Company Address",
+   "options": "Address"
+  },
+  {
+   "fieldname": "column_break_oain",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "contact_and_address_section",
+   "fieldtype": "Section Break",
+   "label": "Contact & Address"
+  },
+  {
+   "fieldname": "pricing_taxes_section",
+   "fieldtype": "Section Break",
+   "label": "Pricing & Taxes"
+  },
+  {
+   "fieldname": "column_break_iwwm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "selling_price_list",
+   "fieldtype": "Link",
+   "label": "Selling Price List",
+   "options": "Price List",
+   "reqd": 1
+  },
+  {
+   "default": "Shopping Cart",
+   "fieldname": "order_type",
+   "fieldtype": "Select",
+   "label": "Order Type",
+   "options": "Shopping Cart",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_zitf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "order_information_section",
+   "fieldtype": "Section Break",
+   "label": "Order Information"
+  },
+  {
+   "fieldname": "sales_order",
+   "fieldtype": "Link",
+   "label": "Sales Order",
+   "options": "Sales Order"
+  },
+  {
+   "fieldname": "ordered_on",
+   "fieldtype": "Datetime",
+   "label": "Ordered On"
+  },
+  {
+   "fieldname": "column_break_zaqa",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "checkout_by",
+   "fieldtype": "Link",
+   "label": "Checkout By",
+   "options": "User"
+  },
+  {
+   "fieldname": "connections_tab",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-20 18:59:14.014294",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "Cart",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

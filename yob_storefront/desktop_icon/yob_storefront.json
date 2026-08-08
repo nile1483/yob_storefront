@@ -1,0 +1,23 @@
+{
+ "app": "yob_storefront",
+ "bg_color": "gray",
+ "creation": "2026-08-06 10:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon": "building-2",
+ "icon_type": "App",
+ "idx": 0,
+ "label": "YOB Storefront",
+ "link_to": "YOB Storefront",
+ "link_type": "Workspace Sidebar",
+ "logo_url": "/assets/yob_storefront/logo.png",
+ "modified": "2026-08-06 10:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "YOB Storefront",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "sidebar": "YOB Storefront",
+ "standard": 1
+}

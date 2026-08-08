@@ -1,0 +1,159 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-02-11 17:18:53.753144",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "store_identity_section",
+  "company",
+  "store_name",
+  "store_domain",
+  "column_break_afqy",
+  "store_logo",
+  "store_defaults_section",
+  "default_currency",
+  "default_price_list",
+  "cart_expiry",
+  "column_break_huyt",
+  "default_warehouse",
+  "allow_guest_purchase",
+  "legal_and_pages_section",
+  "default_terms_page",
+  "column_break_nabl",
+  "default_privacy_page",
+  "payments_section",
+  "allowed_payment_methods"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "store_identity_section",
+   "fieldtype": "Section Break",
+   "label": "Store Identity"
+  },
+  {
+   "fieldname": "store_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Store Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "store_domain",
+   "fieldtype": "Data",
+   "label": "Store Domain"
+  },
+  {
+   "fieldname": "column_break_afqy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "store_logo",
+   "fieldtype": "Attach Image",
+   "label": "Store Logo"
+  },
+  {
+   "fieldname": "store_defaults_section",
+   "fieldtype": "Section Break",
+   "label": "Store Defaults"
+  },
+  {
+   "fieldname": "default_currency",
+   "fieldtype": "Link",
+   "label": "Default Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "default_price_list",
+   "fieldtype": "Link",
+   "label": "Default Price List",
+   "options": "Price List"
+  },
+  {
+   "fieldname": "column_break_huyt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_guest_purchase",
+   "fieldtype": "Check",
+   "label": "Allow Guest Purchase"
+  },
+  {
+   "fieldname": "legal_and_pages_section",
+   "fieldtype": "Section Break",
+   "label": "Legal and Pages"
+  },
+  {
+   "fieldname": "default_terms_page",
+   "fieldtype": "Link",
+   "label": "Default Terms Page",
+   "options": "Web Page"
+  },
+  {
+   "fieldname": "column_break_nabl",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_privacy_page",
+   "fieldtype": "Link",
+   "label": "Default Privacy Page",
+   "options": "Web Page"
+  },
+  {
+   "fieldname": "payments_section",
+   "fieldtype": "Section Break",
+   "label": "Payments"
+  },
+  {
+   "fieldname": "allowed_payment_methods",
+   "fieldtype": "Data",
+   "label": "Allowed Payment Methods"
+  },
+  {
+   "fieldname": "cart_expiry",
+   "fieldtype": "Int",
+   "label": "Cart Expiry (Hours)"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-17 10:39:50.638477",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Store Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

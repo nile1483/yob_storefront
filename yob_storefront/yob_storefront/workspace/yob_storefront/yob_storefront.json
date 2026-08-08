@@ -1,0 +1,146 @@
+{
+ "app": "yob_storefront",
+ "charts": [],
+ "content": "[{\"id\": \"sf-hdr-shortcuts\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Shortcuts</b></span>\", \"col\": 12}}, {\"id\": \"sf-sc-0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Category\", \"col\": 3}}, {\"id\": \"sf-sc-1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Shopping Cart\", \"col\": 3}}, {\"id\": \"sf-sc-2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Payment Method\", \"col\": 3}}, {\"id\": \"sf-sc-3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Store Settings\", \"col\": 3}}, {\"id\": \"sf-hdr-cards\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Storefront</b></span>\", \"col\": 12}}, {\"id\": \"sf-card-catalog\", \"type\": \"card\", \"data\": {\"card_name\": \"Catalog\", \"col\": 4}}, {\"id\": \"sf-card-orders\", \"type\": \"card\", \"data\": {\"card_name\": \"Orders\", \"col\": 4}}, {\"id\": \"sf-card-payments\", \"type\": \"card\", \"data\": {\"card_name\": \"Payments\", \"col\": 4}}]",
+ "creation": "2026-08-06 10:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "building-2",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "YOB Storefront",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catalog",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Category",
+   "link_count": 0,
+   "link_to": "Category",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Orders",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cart",
+   "link_count": 0,
+   "link_to": "Cart",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Payments",
+   "link_count": 4,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Payment Method",
+   "link_count": 0,
+   "link_to": "Payment Method",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Payment Method Assignment",
+   "link_count": 0,
+   "link_to": "Payment Method Assignment",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Razorpay Payment Log",
+   "link_count": 0,
+   "link_to": "Razorpay Payment Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "YOB Store Settings",
+   "link_count": 0,
+   "link_to": "YOB Store Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-08-06 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 2.0,
+ "shortcuts": [
+  {
+   "doc_view": "List",
+   "label": "Category",
+   "link_to": "Category",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "Shopping Cart",
+   "link_to": "Cart",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "Payment Method",
+   "link_to": "Payment Method",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "",
+   "label": "Store Settings",
+   "link_to": "YOB Store Settings",
+   "type": "DocType"
+  }
+ ],
+ "title": "YOB Storefront",
+ "type": "Workspace"
+}

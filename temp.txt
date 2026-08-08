@@ -1,0 +1,286 @@
+A. Project Structure Summary
+
+The app is a Frappe/ERPNext v16 custom B2B store app named yob. It depends on erpnext, payments, and india_compliance via yob/hooks.py.
+
+Main structure:
+- yob/api/: whitelisted API endpoints for auth, catalog, cart, checkout, payment, payment methods, address, CMS/config, frontend helpers, file hooks, and an older order API.
+- yob/services/: shared cart response/payment-method helpers, Razorpay/payment processing, pricing via ERPNext Sales Order engine, and pricing display helpers.
+- yob/yob/doctype/: custom DocTypes: Category, Cart, Cart Item, YOB Store Settings, Payment Method, Payment Method Assignment, and Razorpay Payment Log.
+- yob/fixtures/: custom_field.json adds Item fields and Payment Request checkout token/expiry; client_script.json adds desk scripts for settings/category/cart.
+- yob/public/: global desk JS/CSS currently minimal.
+- yob/templates, yob/www: no meaningful checkout page implementation found in the inspected files.
+- yob/patches.txt: no active patches.
+
+Data model:
+- Cart is the central checkout document. It links to Customer, Company, Currency, Price List, Contact, billing/shipping Address, and has child table items of type Cart Item.
+- Cart Item stores item code/name, quantity, UOM, computed price, discount, tax, total, expiry, and pricing rule metadata.
+- Payment Request is a standard DocType extended by fixtures with custom_checkout_token and custom_checkout_expiry. Code also relies on standard payment_order.
+- Payment Method stores configured payment options, with method_code values such as razorpay or paylater.
+- Payment Method Assignment controls which methods apply to Company, Customer Group, or Customer with min/max order amount rules.
+- Razorpay Payment Log stores Razorpay order/payment/signature fields and reference fields, but its schema does not match how the payment service writes to it.
+
+B. Core Modules
+
+yob/api/cart.py
+- Owns cart creation, add/remove/clear item operations, coupon application, contact/address selection, and repricing.
+- get_or_create_cart() finds the customer's draft Cart or creates one using YOB Store Settings.
+- reprice_cart() removes disabled/invalid items, builds a temporary ERPNext Sales Order, calculates taxes/totals, then syncs the calculated values back into Cart/Cart Item.
+
+yob/services/pricing.py
+- Uses ERPNext Sales Order calculation as the pricing engine.
+- calculate_cart_using_sales_order() creates an unsaved Sales Order from a cart.
+- sync_sales_order_to_cart() copies totals and line-level pricing/tax/pricing-rule data back to cart rows.
+- get_item_pricing() supports catalog item pricing.
+
+yob/api/checkout.py
+- proceed_to_payment() validates the current draft cart and creates/reuses a Payment Request.
+- Generates custom_checkout_token and custom_checkout_expiry.
+- Returns /payment/{token}.
+
+yob/api/payment.py
+- Guest-accessible checkout/payment endpoints.
+- get_checkout_data(token) loads Payment Request by token and returns cart/payment-method data.
+- process_payment(token, payment_method) chooses paylater or razorpay.
+- process_razorpay_payment(pr) creates a Razorpay order and stores its id in Payment Request.payment_order.
+- verify_payment(...) delegates Razorpay signature verification and Sales Order creation to yob.services.payment_service.process_success_payment.
+
+yob/services/payment_service.py
+- Caches Razorpay settings.
+- Verifies Razorpay signature.
+- Finds Payment Request by payment_order.
+- Creates Sales Order from Cart.
+- Marks cart ordered, marks Payment Request paid, writes payment log entries.
+
+yob/services/cart_service.py
+- Builds a frontend-friendly cart response with contact/address display data.
+- Computes available payment methods from Payment Method Assignment.
+
+yob/hooks.py
+- Registers required apps and global desk assets.
+- Hooks cache invalidation to Store Settings, Customer, Contact, Item, Pricing Rule, Price List, Item Group, Item Price, Customer Group, and Territory.
+- Hooks all Files to be made public.
+- No scheduler/webhook hooks for payment reconciliation were found.
+
+C. Checkout & Payment Flow
+
+Current intended flow:
+1. Customer APIs call get_or_create_cart() and mutate a draft Cart.
+2. Cart changes call reprice_cart(), which uses a temporary ERPNext Sales Order to calculate totals.
+3. yob.api.checkout.proceed_to_payment() validates cart contact/address requirements.
+4. It creates or reuses a Payment Request with reference_doctype = Cart and reference_name = cart.name.
+5. It generates a one-hour token in Payment Request.custom_checkout_token and expiry in custom_checkout_expiry.
+6. Frontend calls yob.api.payment.get_checkout_data(token) to load checkout data and available payment methods.
+7. Frontend calls yob.api.payment.process_payment(token, payment_method).
+8. For Razorpay, process_razorpay_payment() creates a Razorpay order for pr.grand_total * 100, stores order id in pr.payment_order, and returns Razorpay checkout parameters.
+9. Browser posts Razorpay ids/signature to guest endpoint verify_payment().
+10. process_success_payment() logs the payment attempt, verifies the signature, finds Payment Request by payment_order, creates a Sales Order from the referenced Cart, marks Cart Ordered, sets cart.sales_order, marks Payment Request Paid, stores gateway payment id, and completes the log.
+
+Pay Later flow:
+1. process_pay_later() creates a Sales Order directly from Payment Request.
+2. It changes Payment Request reference from Cart to Sales Order.
+3. It does not mark the Cart ordered, does not store cart.sales_order, and does not appear to submit or otherwise reserve/close the cart.
+
+D. Issues Found
+
+Critical
+
+1. Payment Request reuse can attach one customer's checkout to another customer's cart.
+- In yob/api/checkout.py, existing Payment Request lookup filters only {reference_doctype: Cart} and omits reference_name, party, status, token expiry, and customer.
+- This can reuse the first Cart Payment Request in the database for any customer/cart, overwrite its total/currency/token, and send the user to pay for the wrong reference.
+- Fix: filter by reference_doctype = Cart, reference_name = cart.name, party = cart.customer, and a reusable state only. Prefer creating a new Payment Request per checkout attempt or explicitly invalidating older draft requests for the same cart.
+
+2. Duplicate Sales Orders can be created from repeated Razorpay verification callbacks.
+- process_success_payment() checks if pr.status == Paid before creating the Sales Order, but there is no row lock, unique idempotency key, or transaction boundary around the check-create-update block.
+- Two concurrent verify requests for the same Razorpay order can both read not Paid, both create Sales Orders, and then both update the same Cart/Payment Request.
+- Fix: lock the Payment Request row before checking status, make gateway payment id/order id unique or idempotent, and commit the state transition atomically.
+
+3. Sales Order creation from successful Razorpay payment uses fields that do not exist on Cart.
+- payment_service.create_sales_order_from_cart() reads cart.price_list and cart.customer_address.
+- The Cart DocType has selling_price_list and billing_address; it does not define price_list or customer_address.
+- Result: successful payment can fail after signature verification, leaving the customer charged but no Sales Order created.
+- Fix: use cart.selling_price_list and cart.billing_address, and add a focused integration test for paid Razorpay verification.
+
+4. Payment log status fields are wrong for Razorpay Payment Log.
+- save_razorpay_payment_log() writes log.status = ..., and later code writes log.sales_order = ...
+- The DocType has payment_status, reference_doctype, and reference_name; it does not define status or sales_order.
+- Depending on Frappe strictness, this either silently creates non-schema attributes that are not persisted as intended or fails validation. The audit trail is unreliable.
+- Fix: write payment_status, reference_doctype = Sales Order, and reference_name = so.name; add missing schema fields only if they are intentionally needed.
+
+5. Code writes Payment Request.custom_gateway_payment_id, but fixture does not define it.
+- payment_service.py sets pr.custom_gateway_payment_id = payment_id.
+- fixtures/custom_field.json only defines custom_checkout_token and custom_checkout_expiry for Payment Request.
+- Fix: either add the custom field via fixture/migration or store gateway ids in a known standard Payment Request field/payment entry/log model.
+
+6. No Razorpay webhook handling or reconciliation exists.
+- Payment finalization depends on a guest browser call to verify_payment().
+- If the browser closes, network fails, or a malicious client withholds the callback after successful payment, the app has no server-to-server fallback to create/reconcile the order.
+- Fix: add a Razorpay webhook endpoint that verifies webhook signature, handles payment.captured/failed/refund events idempotently, and shares the same locked finalization service as browser verification.
+
+High
+
+7. Razorpay amount is not revalidated against the cart at payment-order creation or verification.
+- process_razorpay_payment() uses pr.grand_total; get_checkout_data() saves the cart but does not reprice; verification trusts the existing Payment Request.
+- If cart totals/prices changed after token creation, if a stale/reused Payment Request exists, or if a cart is modified between Payment Request creation and Razorpay order creation, amount drift can occur.
+- Fix: reprice cart immediately before creating a Payment Request and again before Razorpay order creation; compare expected amount/currency to Payment Request and Razorpay payment/order data.
+
+8. Payment Request.payment_order can be overwritten by repeated process_payment() calls.
+- Every call to process_razorpay_payment() creates a new Razorpay order and overwrites pr.payment_order.
+- A user could pay an earlier Razorpay order after the Payment Request now points to a later order. Verification for the earlier order will fail to find the Payment Request, causing paid-but-unprocessed orders.
+- Fix: either reuse the active unpaid Razorpay order while amount/currency match, or create a fresh immutable Payment Request per Razorpay order. Store gateway order attempts in a child/log table.
+
+9. Guest endpoints expose checkout/payment operations based only on bearer token.
+- get_checkout_data, process_payment, and verify_payment are allow_guest=True.
+- Token entropy is good, but there is no rate limit, no token status check, no ownership/session check, and returned checkout data includes cart/contact/address detail.
+- Fix: add rate limiting, token state checks, one-time-use semantics after payment/order creation, and avoid returning unnecessary PII.
+
+10. Pay Later path leaves Cart open and can create duplicate offline Sales Orders.
+- process_pay_later() creates a Sales Order and rewrites Payment Request reference to Sales Order, but does not set cart.status = Ordered or cart.sales_order.
+- Repeated calls can create multiple Sales Orders unless the changed reference blocks later calls; the cart itself remains Draft and can be reused/changed.
+- Fix: make Pay Later use the same locked finalization service as Razorpay, mark the Cart ordered, link the Sales Order, and store an idempotency marker.
+
+11. Desk Cart client script calls a missing method.
+- fixtures/client_script.json calls yob.api.checkout.create_payment_request_from_cart, but checkout.py only defines proceed_to_payment().
+- Desk button will fail at runtime.
+- Fix: update the client script to call the real method or add the missing whitelisted wrapper.
+
+12. Older yob/api/order.py references non-existent YOB Cart and YOB Order doctypes.
+- The file is still whitelisted and can be called, but the doctypes do not exist in this app.
+- Fix: remove/deprecate these endpoints or rewrite them to use current Cart and Sales Order models.
+
+Medium
+
+13. create_sales_order_from_payment_request() in api/payment.py uses item.qty, but Cart Item uses quantity.
+- The Pay Later Sales Order path can fail or create wrong quantities.
+- Fix: use item.quantity, and prefer a single shared Sales Order builder.
+
+14. Two separate Sales Order builder implementations are inconsistent.
+- api/payment.py:create_sales_order_from_payment_request() manually copies rate, uom, and does not set currency/price list/taxes/coupon.
+- services/payment_service.py:create_sales_order_from_cart() lets ERPNext calculate totals but currently uses wrong field names.
+- Fix: consolidate to one service that maps Cart to Sales Order using the same fields as pricing.
+
+15. Payment Method Assignment has payment_method marked unique.
+- This prevents assigning the same payment method to multiple companies/customer groups/customers.
+- The API code expects multiple assignment rows to exist and aggregates valid methods.
+- Fix: remove uniqueness from payment_method and enforce uniqueness on (payment_method, reference_doctype, reference_name) if needed.
+
+16. Available payment methods API is guest-accessible.
+- yob/api/payment_method.py is allow_guest=True and can reveal configured payment method availability for arbitrary customer/company values.
+- Fix: require customer/session or only expose methods through a valid checkout token.
+
+17. Timezone handling uses datetime.now() instead of Frappe time utilities.
+- Checkout expiry is written with now_datetime() but compared using Python datetime.now() in api/payment.py.
+- Fix: compare with frappe.utils.now_datetime() and ensure timezone-aware consistency.
+
+18. Razorpay Settings cache may hold stale secrets indefinitely.
+- get_razorpay_settings() caches API key/secret with no expiry or invalidation hook.
+- Fix: add expiry and clear cache on Razorpay Settings update, or avoid caching secrets.
+
+19. Checkout token is not unique at schema level.
+- custom_checkout_token is not marked unique in fixtures.
+- Collision is unlikely but not impossible, and token lookup uses limit=1.
+- Fix: make the field unique or validate uniqueness before saving.
+
+20. Payment Request status is manually set to Paid without using standard payment lifecycle.
+- No Payment Entry, payment reference, or Payment Request controller workflow was observed.
+- This may leave ERPNext accounting/payment status inconsistent.
+- Fix: use standard payments/ERPNext mechanisms where possible, or document and fully own the custom state lifecycle.
+
+Low
+
+21. Debug pprint() calls are present in production paths.
+- Cart pricing and checkout print full cart/Sales Order/payment request data.
+- Fix: remove or replace with structured debug logs behind a flag.
+
+22. Errors return full tracebacks to API clients.
+- Several endpoints return frappe.get_traceback() directly.
+- Fix: log tracebacks server-side and return sanitized messages.
+
+23. Duplicate function names in api/cart.py.
+- apply_coupon and remove_coupon are each defined twice; the later definitions override earlier ones.
+- Fix: remove dead duplicate definitions.
+
+24. api/cms.py references allowed_payment_modes, but YOB Store Settings has allowed_payment_methods as a Data field.
+- Config response may always return an empty list or error depending on Frappe behavior.
+- Fix: align field names/model shape.
+
+25. Cart.sales_order is written but not present in Cart schema.
+- Razorpay success sets cart.sales_order = so.name, but cart.json has no sales_order field.
+- Fix: add a Link field if this relationship is required, or track the relationship via Sales Order/Payment Request only.
+
+E. Recommended Changes
+
+1. Make checkout/payment idempotent.
+- Create a single finalize_paid_cart(payment_request, gateway_payload) service.
+- Lock Payment Request and/or Cart before processing.
+- Treat payment_order and razorpay_payment_id as idempotency keys.
+- Return the existing Sales Order if already finalized.
+
+2. Fix Payment Request creation/reuse.
+- Scope lookup to the exact cart/customer or create a new Payment Request per checkout attempt.
+- Do not reuse a Payment Request that already has payment_order, is Paid, expired, or references another cart.
+- Invalidate old tokens when a new checkout is generated.
+
+3. Add webhook-based reconciliation.
+- Add Razorpay webhook endpoint with webhook signature verification.
+- Handle captured/failed/refunded states.
+- Route both webhook and browser callback through the same idempotent finalization service.
+
+4. Correct schema mismatches.
+- Replace cart.price_list with cart.selling_price_list.
+- Replace cart.customer_address with cart.billing_address.
+- Replace item.qty with item.quantity.
+- Add or remove custom fields: Payment Request.custom_gateway_payment_id, Cart.sales_order, payment log reference/status fields.
+- Align allowed_payment_methods vs allowed_payment_modes.
+
+5. Use standard accounting/payment documents where possible.
+- Consider creating Payment Entry or using Payment Request/payment gateway integration patterns from ERPNext/payments app.
+- Avoid marking only Payment Request.status as Paid without corresponding accounting records if financial reconciliation is expected.
+
+6. Harden guest endpoints.
+- Add rate limiting.
+- Sanitize errors.
+- Verify token status and expiry with Frappe time utilities.
+- Do not return full customer/contact/address data unless required.
+
+F. Refactor Suggestions
+
+1. Introduce CheckoutService.
+- Responsibilities: validate cart, reprice cart, create Payment Request, generate checkout token, create/reuse gateway order, expire old attempts.
+
+2. Introduce PaymentFinalizationService.
+- Responsibilities: verify gateway signature/webhook, lock Payment Request/Cart, enforce idempotency, create Sales Order, update Cart, update Payment Request, write log, optionally create Payment Entry.
+
+3. Use one Cart-to-Sales-Order mapper.
+- Base it on services/pricing.py field mapping: customer, company, currency, selling_price_list, contact_person, billing_address, shipping_address, coupon_code, quantity.
+- Ensure the same mapper is used by Razorpay and Pay Later.
+
+4. Split API from domain logic.
+- Keep whitelisted methods thin: parse args, call service, return response.
+- Move payment/order mutation into services with unit-testable functions.
+
+5. Replace ad hoc logs with a consistent audit model.
+- Either fix Razorpay Payment Log to include order/payment ids, raw event payload, event type, reference doctype/name, status, error, and idempotency key; or use existing payment gateway log structures.
+
+6. Clean stale endpoints and scripts.
+- Remove or rewrite api/order.py.
+- Fix the Cart desk client script method name.
+- Remove duplicate cart coupon functions and debug prints.
+
+G. Missing Tests / Validation
+
+Critical tests to add:
+- proceed_to_payment() creates a Payment Request for the current cart only and never reuses another customer's/cart's Payment Request.
+- Repeated process_payment() calls do not orphan paid Razorpay orders or overwrite active attempts unsafely.
+- Two concurrent verify_payment() calls for the same Razorpay order create exactly one Sales Order.
+- Successful Razorpay verification works with actual Cart schema fields.
+- Missing/mismatched fields (custom_gateway_payment_id, Cart.sales_order, payment log status/reference fields) are covered by migration/schema tests.
+- Browser callback not received: webhook finalizes payment and order.
+- Webhook received twice: second call is idempotent.
+- Payment amount/currency mismatch rejects finalization.
+- Cart modified after checkout token: payment order amount is recalculated or old token/order is invalidated.
+- Pay Later creates exactly one Sales Order and marks Cart ordered.
+- Expired checkout token blocks checkout data and process payment using Frappe timezone-safe comparison.
+- Payment methods respect Company/Customer Group/Customer assignments and min/max order amounts.
+- Unauthorized/guest callers cannot enumerate customer-specific payment method availability without a valid token.
+- Desk Cart button calls an existing method.
+- Stale api/order.py endpoints are either removed or tested against current doctypes.
