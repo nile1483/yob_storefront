@@ -1,8 +1,11 @@
 import frappe
+from yob_core.api.boundary import yob_api
 from yob_auth.security.decorators import require_application
 from yob_storefront.api.response import (
     HTTP_NOT_FOUND,
+    HTTP_UNPROCESSABLE,
     ORDER_NOT_FOUND,
+    VALIDATION_FAILED,
     error_response,
     success_response,
 )
@@ -10,7 +13,8 @@ from yob_storefront.utils.context import STOREFRONT_APP, get_storefront_customer
 
 # ---------------- ORDER LIST ----------------
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def get_orders(auth_context=None):
     customer = get_storefront_customer(auth_context).name
@@ -35,9 +39,18 @@ def get_orders(auth_context=None):
     )
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def get_order_details(order_id, auth_context=None):
+def get_order_details(order_id=None, auth_context=None):
+
+    if not order_id:
+        return error_response(
+            VALIDATION_FAILED,
+            "Order ID is required.",
+            field="order_id",
+            status_code=HTTP_UNPROCESSABLE,
+        )
 
     customer = get_storefront_customer(auth_context).name
 

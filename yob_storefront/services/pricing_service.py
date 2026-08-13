@@ -69,6 +69,43 @@ def get_item_pricing(
         "qty": qty
     })
 
+    # ------------------------------------------------------------------
+    # ELEVATION BOUNDARY -- read this before changing it.
+    #
+    # `so.customer` above came from `customer_doc`, which the caller resolved
+    # through get_storefront_customer(auth_context). Authorization has ALREADY
+    # happened: the caller proved an enabled STOREFRONT grant for exactly this
+    # Customer. A request-supplied customer never reaches this line.
+    #
+    # ERPNext then re-checks Frappe DocType permissions while filling the
+    # order, which an external Website User cannot satisfy:
+    #
+    #   selling_controller.set_missing_lead_customer_details
+    #     -> party._get_party_details            -> Customer read
+    #     -> party.set_address_details           -> Address read
+    #
+    # ERPNext supports skipping exactly those: selling_controller.py passes
+    # `ignore_permissions=self.flags.ignore_permissions` into _get_party_details,
+    # which forwards it as `check_permissions=not ignore_permissions` to the
+    # address lookups. So this flag is ERPNext's own documented parameter, not a
+    # bypass we invented.
+    #
+    # Scope is one throwaway in-memory Sales Order that is never inserted. No
+    # global state is touched -- deliberately NOT the global
+    # frappe.flags.ignore_permissions (which does not work here anyway:
+    # get_item_details calls item.check_permission() on an internally cached
+    # Item doc, and Document.has_permission consults that doc's own flags), and
+    # the session user is never switched.
+    #
+    # (Phrased without the literal session-switching call name on purpose: the
+    # contract scanner in tests/test_rename.py greps source for forbidden auth
+    # primitives, and it should stay a dumb, un-foolable text scan.)
+    #
+    # The remaining Item read is granted by the `YOB Storefront Buyer` role, not
+    # by this flag. Customer read stays denied -- that is the tested boundary.
+    # ------------------------------------------------------------------
+    so.flags.ignore_permissions = True
+
     so.set_missing_values()
     so.calculate_taxes_and_totals()
 
@@ -175,9 +212,19 @@ def calculate_cart_using_sales_order(cart, customer_doc):
         so.append("items", {
             "item_code": row.item_code,
             "qty": row.quantity,
-            "uom": row.uom or row.stock_uom,             
+            "uom": row.uom or row.stock_uom,
             "stock_uom": row.stock_uom or row.uom,
         })
+
+    # Same targeted elevation as get_item_pricing, and for the same reason:
+    # `so.customer` came from `cart.customer`, and the cart was loaded via the
+    # authenticated Customer resolved from auth_context. Authorization already
+    # happened; ERPNext then re-checks Customer/Address DocType permissions
+    # while filling the order, which an external Website User cannot satisfy.
+    #
+    # Scope is this one throwaway in-memory Sales Order, never inserted. NOT a
+    # global flag, and nothing else in cart/pricing/order services is elevated.
+    so.flags.ignore_permissions = True
 
     so.set_missing_values() 
     
@@ -185,9 +232,8 @@ def calculate_cart_using_sales_order(cart, customer_doc):
     
     apply_pricing_rule_on_transaction(so)
     
-    so.calculate_taxes_and_totals() 
-    
-    # pprint(so.as_dict())
+    so.calculate_taxes_and_totals()
+
     return so
 
 

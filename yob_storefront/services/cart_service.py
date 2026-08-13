@@ -78,78 +78,19 @@ def build_cart_response(cart, removed_items=None, price_updated_items=None):
     }
     
 def get_available_payment_methods(customer, company, order_amount):
+    """Compatibility shim. The rule lives in payment_method_service.
 
-    customer_group = frappe.db.get_value(
-        "Customer",
-        customer,
-        "customer_group"
+    This was the SECOND copy of the eligibility rule; it had already drifted
+    from the API copy (it lacked the missing-customer guard). Kept as a
+    forwarding function so existing callers and any external import keep
+    working, but it owns nothing.
+    """
+
+    from yob_storefront.services.payment_method_service import (
+        get_eligible_payment_methods,
     )
 
-    assignments = frappe.get_all(
-        "Payment Method Assignment",
-        filters={"is_active": 1},
-        fields=[
-            "payment_method",
-            "reference_doctype",
-            "reference_name",
-            "minimum_order_amount",
-            "maximum_order_amount"
-        ]
-    )
-
-    valid_methods = set()
-
-    for a in assignments:
-
-        # ---------------------------
-        # Assignment target
-        # ---------------------------
-
-        if a.reference_doctype == "Customer":
-            if a.reference_name != customer:
-                continue
-
-        elif a.reference_doctype == "Customer Group":
-            if a.reference_name != customer_group:
-                continue
-
-        elif a.reference_doctype == "Company":
-            if a.reference_name != company:
-                continue
-
-        # ---------------------------
-        # Order amount rules
-        # ---------------------------
-
-        if a.minimum_order_amount and order_amount < a.minimum_order_amount:
-            continue
-
-        if a.maximum_order_amount and order_amount > a.maximum_order_amount:
-            continue
-
-        valid_methods.add(a.payment_method)
-
-    if not valid_methods:
-        return []
-
-    methods = frappe.get_all(
-        "Payment Method",
-        filters={
-            "name": ["in", list(valid_methods)],
-            "is_active": 1
-        },
-        fields=[
-            "name",
-            "method_code",
-            "payment_type",
-            "display_order",
-            "icon",
-            "description"
-        ],
-        order_by="display_order asc"
-    )
-
-    return methods
+    return get_eligible_payment_methods(customer, company, order_amount)
 
 
 
@@ -197,22 +138,39 @@ def reprice_cart(cart, customer):
     items = frappe.get_all(
         "Item",
         filters={"name": ["in", item_codes]},
-        fields=["name", "disabled", "is_sales_item"]
+        fields=["name", "disabled", "is_sales_item", "is_stock_item"]
     )
 
     item_map = {d.name: d for d in items}
-    
+
     valid_rows = []
-    
+
     for row in cart.items:
-        
+
         item = item_map.get(row.item_code)
 
         if not item or item.disabled or not item.is_sales_item:
             removed_items.append(row.item_code)
             continue
 
-        valid_rows.append(row) 
+        valid_rows.append(row)
+
+    # ------------------------------------------------------------------
+    # Shipping applicability, derived -- never client-supplied.
+    #
+    # A cart needs a shipping address as soon as ONE line is a physical good.
+    # ERPNext already models this as `is_stock_item` ("Maintain Stock"): stock
+    # items move through a warehouse, non-stock items (services, digital) do
+    # not. Using it avoids inventing a parallel virtual/physical field.
+    #
+    # Recomputed on every reprice, so removing the last physical line clears
+    # the requirement again. If a dedicated virtual/physical field is added
+    # later, only this predicate changes.
+    # ------------------------------------------------------------------
+    cart.is_shippable = 1 if any(
+        (item_map.get(row.item_code) or {}).get("is_stock_item")
+        for row in valid_rows
+    ) else 0 
 
     cart.set("items", valid_rows)
 

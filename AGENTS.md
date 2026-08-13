@@ -1,133 +1,64 @@
-# YOB Storefront - Frappe v16 Application
+# `yob_storefront` — App-Specific Mandatory Rules
 
-Start with the platform guideline at the repository root: [`AGENTS.md`](../../AGENTS.md).
-This file covers what is specific to `yob_storefront`.
+Read the platform standard under `../yob_core/docs/platform/`, this app's
+`docs/contracts/api-compatibility.md`, and the shared API, permission, and
+security standards first.
 
-## Project Overview
+## Purpose
 
-`yob_storefront` is the **ecommerce business layer** of the YOB platform. It is
-one of three apps, not a monolith:
+`yob_storefront` is one independently installable solution app. It owns all
+catalog, product presentation, cart, pricing, coupon,
+address/contact storefront flow, checkout, order, payment, CMS/menu/cache, and
+provider orchestration behavior.
 
-```text
-frappe → yob_core → yob_auth → yob_storefront
-```
+It declares `yob_core`, `yob_auth`, and every directly imported dependency app.
+It never imports a sibling solution app without an accepted ADR, and another
+solution app never needs Storefront merely because both use YOB platform apps.
 
-- **`yob_core`** owns the API response envelope, HTTP constants and generic
-  error codes.
-- **`yob_auth`** owns *all* authentication and application access.
-- **`yob_storefront`** owns the ecommerce domain and nothing else.
+## Authentication boundary
 
-The application provides:
+This app contains no password, OTP, session, application-access, or user
+impersonation implementation and no fallback if `yob_auth` is absent. Protected
+external endpoints use `require_application`. Customer identity comes only from
+trusted `auth_context` through a thin adapter.
 
-- Store Configuration
-- Customer APIs
-- Cart
-- Checkout
-- Pricing
-- Coupons
-- Sales Order Integration
-- Payment Integration
-- Razorpay
-- Menu APIs
-- Cache Layer
-- Utilities
-- Background Jobs
+A client-supplied Customer/company may only be checked for equality and then
+discarded. Normal Desk-internal methods use Frappe DocType permissions, not
+storefront application access.
 
-## Boundaries — do not cross these
+## Response/error boundary
 
-**This app has no authentication of its own.** There is no local password, OTP
-or session implementation, and no legacy fallback. If `yob_auth` is missing the
-app must fail loudly, not degrade.
+Every YOB whitelisted method uses the core API boundary. The storefront owns
+only storefront error codes. A compatibility response module may re-export core
+names, but it implements nothing. API methods do not use broad catches to hide
+unexpected faults.
 
-- Authorize every external endpoint with
-  `@require_application(STOREFRONT_APP, profile_doctype="Customer")`.
-- Read identity **only** from the server-generated `auth_context`, via
-  `yob_storefront.utils.context.get_storefront_customer()`. A caller-supplied
-  `customer` parameter is only ever allowed to *agree* with it — see
-  `assert_customer_matches()`.
-- Never re-implement, wrap or "extend" auth here.
+## Guest/payment rules
 
-**This app owns no generic response code.** `yob_storefront/api/response.py` is
-a compatibility module: it re-exports the generics from `yob_core`, takes
-`APPLICATION_ACCESS_DENIED` from `yob_auth`, and declares only the storefront
-error codes. Keep importing from `yob_storefront.api.response` in this app —
-every storefront module already does — but never add a helper implementation to
-it.
+Only explicitly inventoried token/HMAC routes may be guest-accessible. Validate
+capability before protected lookup/mutation; derive Customer through server
+links; verify amount/currency/state; make retries idempotent; never trust a
+request payment result.
 
-**Storefront error codes stay here.** Never promote `cart_empty`,
-`coupon_invalid`, `order_not_found` or any sibling into `yob_core`. Never rename
-one: they are published contract.
+## Code structure
 
-## Goals
+Keep API adapters and DocType controllers thin. Place use cases in services and
+ERPNext/Payments/Razorpay translation in integration adapters. Use
+`ignore_permissions=True` only after independent trusted ownership/capability
+validation with a written reason and negative isolation test.
 
-- High Performance
-- Low Database Queries
-- Clean Architecture
-- Easy Maintenance
-- Production Ready
-- ERPNext Best Practices
+## Desk navigation
 
-## Coding Standards
+Configure one permission-aware `YOB Storefront` Apps Page entry that opens the
+primary Storefront Workspace. Every additional Desk-visible Storefront module
+owns its own standard public Workspace and sidebar context. Main and Single
+DocTypes may be linked according to roles; Child DocTypes never receive
+standalone navigation.
 
-- Keep API methods thin
-- Business logic belongs in services
-- Avoid duplicate code
-- Prefer caching for master data
-- Minimize DB calls
-- Use frappe.qb where appropriate
-- Use constants instead of magic strings
-- Use transactions correctly
-- Validate every public API
-- Follow SOLID principles
+## Required tests
 
-## Response contract
-
-Every whitelisted endpoint answers through `success_response`,
-`error_response`, `errors_response` or `server_error` — never a bare dict.
-
-- A bare `except Exception` must return `server_error` (500). Do not disguise
-  an unexpected fault as a business error; a test enforces this.
-- Error codes must be declared constants, never inline literals:
-  `error_response(CART_EMPTY, "...")`, not `error_response("cart_empty", "...")`.
-- Never return a traceback.
-
-Full contract: `apps/yob_core/docs/api-contract.md`.
-
-Exceptions to the scans are configuration in
-`tests/test_response_contract.py` (`CONTRACT_EXEMPT`, `DELEGATING_HELPERS`) —
-add to those lists with a comment saying why, rather than loosening the check.
-
-## Tests
-
-```bash
-bench --site <site> run-tests --app yob_storefront
-```
-
-Test storefront codes, endpoint conformance and this app's exemptions. The
-generic envelope behaviour is tested once in `yob_core` — do not copy it here.
-
-## Review Checklist
-
-Review the application for:
-
-- Architecture
-- Folder Structure
-- Naming
-- Performance
-- Database Queries
-- Cache
-- Security
-- Transactions
-- Logging
-- Exception Handling
-- ERPNext/Frappe Best Practices
-- Maintainability
-- Scalability
-
-When suggesting improvements:
-
-- Explain WHY
-- Explain Impact
-- Suggest Better Code
-- Suggest Better Architecture
-- Prefer Frappe v16 best practices
+Test response/decorator coverage, all storefront errors, customer A versus B,
+application/profile denial, legacy parameter mismatch, cart ownership, address
+ownership, order isolation, payment token expiry/replay/signature/amount/currency,
+idempotency, rollback on failure, Desk permissions, and endpoint/client
+compatibility.

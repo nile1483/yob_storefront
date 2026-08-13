@@ -16,8 +16,26 @@ import unittest
 
 import frappe
 
+from werkzeug.test import EnvironBuilder
+from werkzeug.wrappers import Request
+
 from yob_auth.security.access import resolve_access
 from yob_auth.security.exceptions import YOBAccessDeniedError, YOBAuthenticationError
+
+
+def _set_trusted_host_request(application_code):
+    """Install a request carrying a host the application actually trusts.
+
+    Reads the configured allow-list rather than hard-coding a hostname, so this
+    works whether or not the site has `domains` populated. When the list is
+    empty the host check short-circuits anyway and any value is fine.
+    """
+
+    domains = frappe.db.get_value("YOB Application", application_code, "domains") or ""
+    host = next((line.strip() for line in domains.splitlines() if line.strip()), "localhost")
+    frappe.local.request = Request(
+        EnvironBuilder(headers={"X-YOB-Original-Host": host}).get_environ()
+    )
 from yob_storefront.utils.context import (
     STOREFRONT_APP,
     assert_customer_matches,
@@ -223,6 +241,17 @@ class StorefrontIsolationCase(unittest.TestCase):
 
         frappe.set_user(self.user_a)
         frappe.local.form_dict = frappe._dict(auth_context=forged)
+
+        # Unit tests run with no HTTP request, so get_original_host() returns ""
+        # and a CONFIGURED domain allow-list correctly refuses -- the decorator
+        # would then return an error envelope instead of an AuthContext, and
+        # this test would error on `result.user` for a reason unrelated to what
+        # it asserts. Supply the trusted host the application actually lists so
+        # the control stays armed and this test measures only context stripping.
+        # Enforcement itself is proven in
+        # yob_auth/tests/test_domain_enforcement.py.
+        _set_trusted_host_request(STOREFRONT_APP)
+
         result = probe(auth_context=forged)
 
         self.assertEqual(result.user, self.user_a)
@@ -272,3 +301,65 @@ class CartAndOrderIsolationCase(StorefrontIsolationCase):
         )
         self.assertTrue(all(c == customer_a for c in orders))
         self.assertNotIn(self.customer_b, orders)
+
+
+class AddressAndContactIsolationCase(StorefrontIsolationCase):
+    """Customer A must not reach Customer B's addresses or contacts.
+
+    Frappe's built-in `All` role grants read on Address and Contact to every
+    user, so the framework provides NO isolation here -- these ownership helpers
+    are the only thing standing between two customers' contact details. That
+    makes them worth pinning explicitly.
+    """
+
+    def _make(self, doctype, customer, title):
+        if frappe.db.exists(doctype, {"address_title" if doctype == "Address" else "first_name": title}):
+            return frappe.db.get_value(
+                doctype, {"address_title" if doctype == "Address" else "first_name": title}, "name"
+            )
+        fields = (
+            {"doctype": "Address", "address_title": title, "address_type": "Billing",
+             "address_line1": "1 Test Street", "city": "Ahmedabad",
+             # india_compliance requires state + pincode on Indian addresses.
+             "state": "Gujarat", "pincode": "382445", "country": "India"}
+            if doctype == "Address"
+            else {"doctype": "Contact", "first_name": title}
+        )
+        fields["links"] = [{"link_doctype": "Customer", "link_name": customer}]
+        doc = frappe.get_doc(fields).insert(ignore_permissions=True)
+        frappe.db.commit()
+        return doc.name
+
+    def test_address_owner_check_rejects_another_customers_address(self):
+        from yob_storefront.api.address import check_address_owner
+
+        b_address = self._make("Address", self.customer_b, "_Test Isolation Addr B")
+        a = frappe.get_doc("Customer", self.customer_a)
+
+        self.assertFalse(
+            check_address_owner(b_address, a),
+            "Customer A was allowed to act on Customer B's address",
+        )
+
+    def test_contact_owner_check_rejects_another_customers_contact(self):
+        from yob_storefront.api.address import check_contact_owner
+
+        b_contact = self._make("Contact", self.customer_b, "_TestIsolationContactB")
+        a = frappe.get_doc("Customer", self.customer_a)
+
+        self.assertFalse(
+            check_contact_owner(b_contact, a),
+            "Customer A was allowed to act on Customer B's contact",
+        )
+
+    def test_owner_checks_accept_own_records(self):
+        """Guard against a check that rejects everything and looks 'secure'."""
+
+        from yob_storefront.api.address import check_address_owner, check_contact_owner
+
+        a_address = self._make("Address", self.customer_a, "_Test Isolation Addr A")
+        a_contact = self._make("Contact", self.customer_a, "_TestIsolationContactA")
+        a = frappe.get_doc("Customer", self.customer_a)
+
+        self.assertTrue(check_address_owner(a_address, a))
+        self.assertTrue(check_contact_owner(a_contact, a))

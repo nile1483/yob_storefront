@@ -138,8 +138,9 @@
    "fieldname": "pricing_rule_apply_on",
    "fieldtype": "Select",
    "label": "Pricing Rule Apply On",
-   "options": "Item\nItem Group\nBrand\nCustomer\nCustomer Group\nTerritory\nCampaign\nPrice List\nTransaction\nCoupon Code",
-   "read_only": 1
+   "options": "Item Code\nItem Group\nBrand\nTransaction",
+   "read_only": 1,
+   "description": "Read-only mirror of ERPNext Pricing Rule.apply_on. Options must match that field exactly."
   },
   {
    "fieldname": "pricing_rule_label",

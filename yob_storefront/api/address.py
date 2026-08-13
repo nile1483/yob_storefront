@@ -1,4 +1,5 @@
 import frappe
+from yob_core.api.boundary import yob_api
 from yob_auth.security.decorators import require_application
 from yob_storefront.utils.context import STOREFRONT_APP, get_storefront_customer
 from yob_storefront.api.response import (
@@ -33,7 +34,6 @@ def check_address_owner(address_name, customer):
 
 
 def check_contact_owner(contact_name, customer):
-    print(contact_name, customer.name)
     return frappe.db.exists(
         "Dynamic Link",
         {
@@ -63,7 +63,8 @@ def clear_customer_address_cache(customer_name):
 # CONTACTS (POC)
 # =========================================================
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def get_contacts(auth_context=None):
    
@@ -128,10 +129,75 @@ def get_contacts(auth_context=None):
         return server_error("Get Contacts Error", "Failed to load contacts")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
+@require_application(STOREFRONT_APP, profile_doctype="Customer")
+def add_contact(auth_context=None):
+    """Create a Contact master linked to the authenticated Customer.
+
+    Mirrors ``add_address``. The Customer link comes from ``auth_context`` and
+    is appended server-side, so a caller cannot attach a Contact to another
+    Customer -- which is exactly why the storefront owns this endpoint instead
+    of letting clients POST to ``/api/resource/Contact`` (where the caller would
+    supply ``links`` themselves).
+    """
+
+    try:
+        customer = get_storefront_customer(auth_context)
+        data = frappe.form_dict
+
+        first_name = (data.get("first_name") or "").strip()
+        if not first_name:
+            return error_response(
+                VALIDATION_FAILED,
+                "First name is required.",
+                field="first_name",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
+        doc = frappe.new_doc("Contact")
+        doc.first_name = first_name
+        doc.last_name = data.get("last_name")
+        doc.salutation = data.get("salutation")
+        doc.designation = data.get("designation")
+        doc.company_name = data.get("company")
+        doc.gender = data.get("gender")
+
+        # Contact stores email/phone in child tables, not plain fields.
+        if data.get("email"):
+            doc.append("email_ids", {"email_id": data.get("email"), "is_primary": 1})
+
+        if data.get("phone"):
+            doc.append("phone_nos", {"phone": data.get("phone"), "is_primary_phone": 1})
+
+        doc.append("links", {
+            "link_doctype": "Customer",
+            "link_name": customer.name
+        })
+
+        doc.insert(ignore_permissions=True)
+
+        clear_customer_contact_cache(customer)
+
+        return success_response({
+            "name": doc.name,
+            "first_name": doc.first_name,
+            "last_name": doc.last_name,
+            "salutation": doc.salutation,
+            "designation": doc.designation,
+            "email": doc.email_ids[0].email_id if doc.email_ids else None,
+            "phone": doc.phone_nos[0].phone if doc.phone_nos else None,
+        }, notice="Contact created", status_code=HTTP_CREATED)
+
+    except Exception:
+        return server_error("Add Contact Error", "Failed to create contact")
+
+
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def update_contact(auth_context=None):
-    
+
     try:
         customer = get_storefront_customer(auth_context)
         data = frappe.form_dict
@@ -214,11 +280,20 @@ def update_contact(auth_context=None):
         return server_error("Update Contact Error", "Failed to update contact")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def delete_contact(name, auth_context=None):
-    
-    # try: 
+def delete_contact(name=None, auth_context=None):
+
+    # try:
+    if not name:
+        return error_response(
+            VALIDATION_FAILED,
+            "Contact name is required.",
+            field="name",
+            status_code=HTTP_UNPROCESSABLE,
+        )
+
     customer = get_storefront_customer(auth_context)
      
     if not check_contact_owner(name, customer):
@@ -243,7 +318,8 @@ def delete_contact(name, auth_context=None):
 # ADDRESSES
 # =========================================================
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def get_addresses(auth_context=None):
     
@@ -296,7 +372,8 @@ def get_addresses(auth_context=None):
         return server_error("Get Addresses Error", "Failed to load addresses")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def add_address(auth_context=None):
     try:
@@ -362,7 +439,8 @@ def add_address(auth_context=None):
         return server_error("Add Address Error", "Failed to create address")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def update_address(auth_context=None):
     try:
@@ -441,11 +519,20 @@ def update_address(auth_context=None):
         return server_error("Update Address Error", "Failed to update address")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def delete_address(name, auth_context=None):
-    
+def delete_address(name=None, auth_context=None):
+
     try:
+        if not name:
+            return error_response(
+                VALIDATION_FAILED,
+                "Address name is required.",
+                field="name",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
         customer = get_storefront_customer(auth_context)
 
         if not check_address_owner(name, customer):
@@ -466,8 +553,9 @@ def delete_address(name, auth_context=None):
         return server_error("Delete Address Error", "Failed to delete address")
     
 
-@frappe.whitelist()
-def get_contact_for_customer(customer):
+@frappe.whitelist(methods=["GET"])
+@yob_api
+def get_contact_for_customer(customer=None):
     """
     Returns the contact linked to the given customer.
     Priority:
@@ -479,6 +567,11 @@ def get_contact_for_customer(customer):
     DocType permissions -- NOT with storefront application access. External
     storefront customers have no Customer read permission and are rejected.
     """
+
+    # Guard first: has_permission(doc=None) degrades to a general check that a
+    # Desk user would pass, and the query below would then run with no customer.
+    if not customer:
+        frappe.throw("Customer is required", frappe.ValidationError)
 
     if not frappe.has_permission("Customer", "read", doc=customer):
         frappe.throw("Not permitted", frappe.PermissionError)

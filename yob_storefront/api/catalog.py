@@ -8,13 +8,16 @@ ERPNext v16 Compatible
 """
 
 import frappe
+from yob_core.api.boundary import yob_api
 from frappe.utils import get_url
 from yob_storefront.api.response import (
     APPLICATION_ACCESS_DENIED,
     CATEGORY_NOT_FOUND,
     HTTP_FORBIDDEN,
     HTTP_NOT_FOUND,
+    HTTP_UNPROCESSABLE,
     ITEM_NOT_FOUND,
+    VALIDATION_FAILED,
     error_response,
     server_error,
     success_response,
@@ -31,7 +34,8 @@ from yob_storefront.services.pricing_service import (
 # 1️⃣ GET CATEGORIES (LOGIN REQUIRED)
 # =========================================================
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def get_categories(parent_slug=None, auth_context=None):
 
@@ -101,9 +105,18 @@ def get_categories(parent_slug=None, auth_context=None):
 # 2️⃣ GET CATEGORY WITH ITEMS (LOGIN REQUIRED)
 # =========================================================
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def get_category(slug, qty=1, auth_context=None):
+def get_category(slug=None, qty=1, auth_context=None):
+
+    if not slug:
+        return error_response(
+            VALIDATION_FAILED,
+            "Category slug is required.",
+            field="slug",
+            status_code=HTTP_UNPROCESSABLE,
+        )
 
     try:
         # 🔐 Enforce Login + Customer
@@ -251,11 +264,20 @@ def get_category(slug, qty=1, auth_context=None):
 # 3️⃣ GET SINGLE ITEM (LOGIN REQUIRED)
 # =========================================================
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def get_item(slug, qty=1, auth_context=None):
+def get_item(slug=None, qty=1, auth_context=None):
 
     # try:
+        if not slug:
+            return error_response(
+                VALIDATION_FAILED,
+                "Item slug is required.",
+                field="slug",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
         # 🔐 Enforce Login + Customer
         customer = get_storefront_customer(auth_context)
 
@@ -289,7 +311,10 @@ def get_item(slug, qty=1, auth_context=None):
         )
 
         rules = get_applicable_pricing_rules(
-            customer=customer,
+            # The helper does frappe.db.get_value("Customer", customer, ...),
+            # so it needs the Customer NAME. Passing the document made Frappe
+            # treat it as a filters object -> "Unsupported filters type: Customer".
+            customer=customer.name,
             item_code=item["name"],
             item_group=item["item_group"]
         )

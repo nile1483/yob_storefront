@@ -1,0 +1,948 @@
+{
+  "info": {
+    "name": "YOB Storefront & Auth API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://storefront.local:8080"
+    },
+    {
+      "key": "csrf_token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "yob_auth.api.auth.get_session_context",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_auth.api.auth.get_session_context",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_auth.api.auth.get_session_context"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_auth.api.auth.login_with_otp",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_auth.api.auth.login_with_otp",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_auth.api.auth.login_with_otp"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"challenge_id\": \"\",\n  \"otp\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_auth.api.auth.login_with_password",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_auth.api.auth.login_with_password",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_auth.api.auth.login_with_password"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": \"\",\n  \"username\": \"\",\n  \"password\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_auth.api.auth.logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_auth.api.auth.logout",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_auth.api.auth.logout"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "yob_auth.api.auth.request_otp",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_auth.api.auth.request_otp",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_auth.api.auth.request_otp"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": \"\",\n  \"identifier\": \"\",\n  \"method\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.add_address",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.add_address",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.add_address"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.add_contact",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.add_contact",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.add_contact"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.delete_address",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.delete_address",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.delete_address"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.delete_contact",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.delete_contact",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.delete_contact"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.get_addresses",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.get_addresses",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.get_addresses"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.get_contact_for_customer",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.get_contact_for_customer",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.get_contact_for_customer"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.get_contacts",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.get_contacts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.get_contacts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.update_address",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.update_address",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.update_address"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.address.update_contact",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.address.update_contact",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.address.update_contact"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.add_to_cart",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.add_to_cart",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.add_to_cart"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"item_code\": \"\",\n  \"qty\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.apply_coupon",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.apply_coupon",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.apply_coupon"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"code\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.clear_cart",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.clear_cart",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.clear_cart"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.get_cart",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.get_cart",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.get_cart"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.remove_coupon",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.remove_coupon",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.remove_coupon"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.remove_from_cart",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.remove_from_cart",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.remove_from_cart"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"item_code\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.set_cart_billing_address",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_billing_address",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.set_cart_billing_address"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"billing_address\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.set_cart_contact",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_contact",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.set_cart_contact"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contact_person\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cart.set_cart_shipping_address",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_shipping_address",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cart.set_cart_shipping_address"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"shipping_address\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.catalog.get_categories",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_categories",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.catalog.get_categories"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.catalog.get_category",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_category",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.catalog.get_category"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.catalog.get_item",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_item",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.catalog.get_item"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.checkout.proceed_to_payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Frappe-CSRF-Token",
+            "value": "{{csrf_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.checkout.proceed_to_payment",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.checkout.proceed_to_payment"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.cms.get_config",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.cms.get_config",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.cms.get_config"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.order.get_order_details",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.order.get_order_details",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.order.get_order_details"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.order.get_orders",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.order.get_orders",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.order.get_orders"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.payment.get_checkout_data",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.payment.get_checkout_data",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.payment.get_checkout_data"
+          ]
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.payment.process_payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.payment.process_payment",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.payment.process_payment"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"\",\n  \"payment_method\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.payment.verify_payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.payment.verify_payment",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.payment.verify_payment"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"razorpay_order_id\": \"\",\n  \"razorpay_payment_id\": \"\",\n  \"razorpay_signature\": \"\"\n}"
+        }
+      }
+    },
+    {
+      "name": "yob_storefront.api.payment_method.get_payment_methods",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/method/yob_storefront.api.payment_method.get_payment_methods",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "method",
+            "yob_storefront.api.payment_method.get_payment_methods"
+          ]
+        }
+      }
+    }
+  ]
+}

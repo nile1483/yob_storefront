@@ -1,7 +1,5 @@
 import frappe
-import secrets
-from datetime import timedelta
-from frappe.utils import now_datetime
+from yob_core.api.boundary import yob_api
 from yob_storefront.api.response import (
     BILLING_ADDRESS_REQUIRED,
     CART_EMPTY,
@@ -16,25 +14,43 @@ from yob_storefront.api.response import (
     success_response,
 )
 from yob_auth.security.decorators import require_application
+from yob_storefront.services.cart_service import reprice_cart
+from yob_storefront.services.payment_request_service import issue_checkout_credential
 from yob_storefront.utils.context import STOREFRONT_APP, get_storefront_customer
-from pprint import pprint
 
-@frappe.whitelist()
+
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def proceed_to_payment(auth_context=None):
-    
+    """Issue (or re-issue) the checkout credential for the buyer's open Cart.
 
-    # ------------------------------------------------
-    # Validate Customer
-    # ------------------------------------------------
+    This is the ONLY path that creates or replaces a Cart-backed Payment
+    Request, which is what lets the ordering below be the whole concurrency
+    story:
+
+        locate Cart -> FOR UPDATE -> reload -> reprice -> save -> fingerprint
+        -> ONLY THEN look for existing Payment Requests
+
+    Candidate lookup after the lock is the point. Two competing Proceed calls
+    serialise on the Cart row, so the second one reloads and SEES what the first
+    one created, and reuses it. Looking first and locking later is what allows
+    two live payment obligations for one cart.
+
+    No explicit commit: there is no provider call here, so the normal
+    request-end transaction boundary is the right one, and committing early
+    would only publish a half-finished supersession.
+    """
+
     customer = get_storefront_customer(auth_context)
 
     # ------------------------------------------------
-    # Get Draft Cart
+    # Locate the Draft Cart -- identity only, no data read yet
     # ------------------------------------------------
     cart_name = frappe.db.get_value(
         "Cart",
-        {"customer": customer.name, "status": "Draft"}
+        {"customer": customer.name, "status": "Draft"},
+        "name",
     )
 
     if not cart_name:
@@ -43,6 +59,14 @@ def proceed_to_payment(auth_context=None):
             "No open cart was found.",
             status_code=HTTP_NOT_FOUND,
         )
+
+    # ------------------------------------------------
+    # Lock the Cart row, THEN read it
+    # ------------------------------------------------
+    # A competing request blocks here until this transaction ends. The reload
+    # afterwards is what makes the lock worth taking: it is how this request
+    # observes whatever the winner committed.
+    frappe.db.get_value("Cart", cart_name, "name", for_update=True)
 
     cart = frappe.get_doc("Cart", cart_name)
 
@@ -54,7 +78,7 @@ def proceed_to_payment(auth_context=None):
         )
 
     # ------------------------------------------------
-    # Validate Required Fields
+    # Validate required fields (against the locked state)
     # ------------------------------------------------
     if not cart.contact_person:
         return error_response(
@@ -81,79 +105,29 @@ def proceed_to_payment(auth_context=None):
         )
 
     # ------------------------------------------------
-    # Find Existing Payment Request
+    # Authoritative pricing, persisted
     # ------------------------------------------------
-    pr_name = frappe.db.get_value(
-            "Payment Request",
-            {
-                "reference_doctype": "Cart",
-                "reference_name": cart.name,
-                "party": cart.customer,
-                "status": ["not in", ["Paid", "Cancelled"]]
-            },
-            "name"
-        )
-   
-    # ------------------------------------------------
-    # Create Payment Request if not exists
-    # ------------------------------------------------
-    if pr_name:
-
-        pr = frappe.get_doc("Payment Request", pr_name)
-
-        pr.grand_total = cart.grand_total
-        pr.currency = cart.currency
-
-        created = False
-
-    else:
-
-        created = True
-
-        pr = frappe.get_doc({
-            "doctype": "Payment Request",
-            "payment_request_type": "Inward",
-            "party_type": "Customer",
-            "party": cart.customer,
-            "reference_doctype": "Cart",
-            "reference_name": cart.name,
-            "grand_total": cart.grand_total,
-            "currency": cart.currency,
-            "email_to": frappe.session.user,
-            "subject": f"Payment for Cart {cart.name}"
-        })
-        pprint("Payment Request: ")
-        pr.insert(ignore_permissions=True)
-        
-        pprint(pr.as_dict())
-        
-        
+    # Unlike the public GET, this is an authenticated POST by the cart's owner:
+    # the priced state it is about to be billed for is worth storing, and the
+    # Payment Request is issued against exactly this saved state.
+    reprice_cart(cart, customer)
+    cart.save(ignore_permissions=True)
 
     # ------------------------------------------------
-    # Generate Secure Checkout Token
+    # Issue / reuse / rotate / supersede -- still under the lock
     # ------------------------------------------------
-    token = secrets.token_urlsafe(32)
+    result = issue_checkout_credential(cart, customer)
 
-    pr.custom_checkout_token  = token
-    pr.custom_checkout_expiry = now_datetime() + timedelta(hours=1)
+    token = result["token"]
 
-    pr.save(ignore_permissions=True)
-
-    # ------------------------------------------------
-    # Return Payment Page URL
-    # ------------------------------------------------
-    # 201 only when a Payment Request was actually created; reusing an open one
-    # is an update, not a creation.
     return success_response(
         {
             "payment_url": f"/payment/{token}",
-            "payment_request": pr.name,
-            "token": token
+            "payment_request": result["payment_request"],
+            "token": token,
         },
         notice="Proceed to payment",
-        status_code=HTTP_CREATED if created else HTTP_OK,
+        # 201 only when a Payment Request was actually created. Reusing an open
+        # obligation -- with or without a rotated credential -- is not creation.
+        status_code=HTTP_CREATED if result["created"] else HTTP_OK,
     )
-
-    # except Exception:
-    #     # Never return frappe.get_traceback() to a client.
-    #     return server_error("Checkout Error", "Failed to start checkout")

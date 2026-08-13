@@ -1,4 +1,5 @@
 import frappe
+from yob_core.api.boundary import yob_api
 from frappe.utils import get_url
 from yob_auth.security.decorators import require_application
 from yob_storefront.api.response import server_error, success_response
@@ -9,7 +10,8 @@ from yob_storefront.utils.cache import STORE_CONFIG_CACHE
 
 # ---------------- CONFIG ----------------
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP)
 def get_config(auth_context=None):
     cache_key = STORE_CONFIG_CACHE

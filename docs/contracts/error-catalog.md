@@ -1,0 +1,49 @@
+# Storefront Error-Code Catalog
+
+Status: Normative baseline; verify current source before migration.
+
+Known published wire values from the reviewed archive:
+
+```text
+category_not_found
+item_not_found
+cart_not_found
+cart_empty
+quantity_invalid
+contact_not_found
+contact_invalid
+contact_required
+address_not_found
+billing_address_invalid
+billing_address_required
+shipping_address_invalid
+shipping_address_required
+shipping_not_applicable
+coupon_code_required
+coupon_invalid
+coupon_not_active
+coupon_expired
+coupon_usage_limit_reached
+coupon_not_applicable
+coupon_minimum_not_met
+coupon_maximum_exceeded
+coupon_not_applied
+order_not_found
+checkout_token_invalid
+checkout_token_expired
+customer_not_found
+payment_method_unsupported
+payment_provider_not_configured
+payment_already_processed
+payment_signature_invalid
+payment_verification_failed
+payment_not_captured
+payment_amount_mismatch
+payment_currency_mismatch
+payment_reference_invalid
+```
+
+The Storefront app defines uppercase Python constants for these lowercase wire
+values and documents each endpoint/status mapping. Adding a new value is usually
+additive. Renaming, deleting, changing the meaning, or changing the published
+status is a breaking contract change.

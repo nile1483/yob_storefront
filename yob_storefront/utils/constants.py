@@ -31,26 +31,12 @@ class PaymentMethodCode:
     PAY_LATER = "paylater"
 
 
-# =========================================================
-# ERROR CODES
-# =========================================================
-
-class ErrorCode:
-    VALIDATION_ERROR = "VALIDATION_ERROR"
-    NOT_FOUND = "NOT_FOUND"
-    UNAUTHORIZED = "UNAUTHORIZED"
-    SERVER_ERROR = "SERVER_ERROR"
-
-    CART_NOT_FOUND = "CART_NOT_FOUND"
-    CART_EMPTY = "CART_EMPTY"
-
-    COUPON_INVALID = "COUPON_INVALID"
-    COUPON_EXPIRED = "COUPON_EXPIRED"
-
-    PAYMENT_FAILED = "PAYMENT_FAILED"
-    PAYMENT_EXPIRED = "PAYMENT_EXPIRED"
-    PAYMENT_INVALID = "PAYMENT_INVALID"
-
+# Error codes are NOT defined here. The published storefront codes live in
+# `yob_storefront/api/response.py` as lowercase snake_case wire values, and the
+# platform codes in `yob_core.api.errors`. A legacy uppercase `ErrorCode` class
+# used to sit here with zero importers; it was removed under CHG-001 (F-09)
+# because a second, divergent code list is exactly how a published contract
+# drifts. Do not reintroduce one.
 
 # =========================================================
 # CACHE KEYS

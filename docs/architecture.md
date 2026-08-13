@@ -1,23 +1,49 @@
-# YOB Application Documentation
+# YOB Storefront Architecture and Flows
+
+Status: Existing-architecture baseline. The flows below describe how the app
+behaves today; verify current source before changing any of them. Sections
+marked **Archive evidence** were carried from the pre-split `yob` app and have
+not been re-verified line by line.
+
+Companion documents: [`context.md`](context.md) for ownership and compatibility,
+[`doctypes.md`](doctypes.md) for the DocType inventory and navigation policy,
+[`security.md`](security.md) for the threat model, and
+[`contracts/`](contracts/) for the API and error contracts. Platform-wide rules
+live in [`../../yob_core/docs/platform/`](../../yob_core/docs/platform/).
 
 ## Scope
 
-This document explains the YOB app at an MVP level. YOB is a Frappe/ERPNext B2B commerce application that exposes APIs for catalog browsing, customer-specific cart pricing, checkout, payment method selection, Razorpay payment verification, Pay Later ordering, address/contact management, and order history.
+This document explains `yob_storefront` at an MVP level. It is a Frappe/ERPNext
+B2B commerce solution app that exposes APIs for catalog browsing,
+customer-specific cart pricing, checkout, payment method selection, Razorpay
+payment verification, Pay Later ordering, address/contact management, and order
+history.
 
-The app depends on ERPNext, Payments, and India Compliance. It reuses ERPNext masters such as Customer, Contact, Address, Item, Item Price, Pricing Rule, Coupon Code, Sales Order, Payment Request, Razorpay Settings, Currency, Company, Price List, Warehouse, and Web Page.
+The app declares `yob_core`, `yob_auth`, `erpnext`, `payments`, and
+`india_compliance` in `required_apps`. It reuses ERPNext masters such as
+Customer, Contact, Address, Item, Item Price, Pricing Rule, Coupon Code, Sales
+Order, Payment Request, Razorpay Settings, Currency, Company, Price List,
+Warehouse, and Web Page.
+
+Identity, sessions, and application access are owned by `yob_auth`; the response
+envelope and API error boundary are owned by `yob_core`. This app implements
+none of them.
 
 ## App Entry Points
 
 ### Frappe Hooks
 
-File: `yob/hooks.py`
+File: `yob_storefront/hooks.py`
 
-- Registers the app as `yob`.
-- Adds YOB to the app screen and desk icons.
+- Registers the app as `yob_storefront` with title `YOB Storefront`.
+- Adds one Apps Page entry (`add_to_apps_screen`) opening the Storefront
+  Workspace.
 - Loads desk assets:
-  - CSS: `/assets/yob/css/yob.css`
-  - JS: `/assets/yob/js/yob.js`
+  - CSS: `/assets/yob_storefront/css/yob.css`
+  - JS: `/assets/yob_storefront/js/yob.js`
 - Requires installed apps:
+  - `yob_core`
+  - `yob_auth`
   - `erpnext`
   - `payments`
   - `india_compliance`
@@ -169,22 +195,34 @@ Important fields:
 
 ## Authentication And Customer Resolution
 
-File: `yob/utils/auth.py`
+File: `yob_storefront/utils/context.py`
 
-The app is private B2B by design.
+The app is private B2B by design. It implements **no** authentication itself.
 
-Flow:
+Flow (verified against source, CHG-001 F-10):
 
-1. API calls use the current Frappe session if the user is logged in.
-2. If the session user is `Guest`, the app checks an `Authorization: Bearer <token>` header.
-3. The bearer token is resolved through Frappe cache using `CacheKey.auth_token(token)`.
-4. `require_login()` sets the Frappe user when a valid token exists.
-5. `require_customer()` finds the linked Customer by matching the logged-in user email against `Contact Email`, `Contact`, `Dynamic Link`, and `Customer`.
-6. Most commerce APIs require a valid Customer context before returning catalog, cart, checkout, or order data.
+1. `yob_auth.api.auth.login_with_password` (or `login_with_otp`) authenticates and
+   creates the standard Frappe `sid` session. Storefront is not involved.
+2. Every protected endpoint is wrapped in
+   `require_application(STOREFRONT_APP, profile_doctype="Customer")`, which strips
+   any caller-supplied `auth_context` and injects a server-built one.
+3. `get_storefront_customer(auth_context)` in `utils/context.py` is a thin
+   adapter: it rejects a missing context, requires `profile_doctype == "Customer"`
+   with a non-empty `profile_name`, and returns that Customer document.
+4. A client-supplied `customer` is only ever compared for equality
+   (`assert_customer_matches`) and then discarded. It never authorizes anything.
+
+> **Superseded:** earlier revisions of this document described an
+> `Authorization: Bearer <token>` header resolved through the Frappe cache, with
+> `require_login()` / `require_customer()` setting the Frappe user. **That flow no
+> longer exists.** `CacheKey` has no `auth_token` member, and
+> `tests/test_rename.py` fails the build if `get_user_from_token`,
+> `require_login`, `require_customer`, `frappe.set_user` or `check_password`
+> reappear anywhere in this app. Identity is session + `auth_context` only.
 
 ## Store Configuration Flow
 
-File: `yob/api/cms.py`
+File: `yob_storefront/api/cms.py`
 
 Endpoint:
 
@@ -200,7 +238,7 @@ Flow:
 
 ## Catalog Flow
 
-File: `yob/api/catalog.py`
+File: `yob_storefront/api/catalog.py`
 
 ### Get Categories
 
@@ -247,7 +285,7 @@ Flow:
 
 ## Pricing Flow
 
-File: `yob/services/pricing.py`
+File: `yob_storefront/services/pricing_service.py`
 
 The MVP pricing design is centralized around ERPNext's Sales Order engine.
 
@@ -308,7 +346,7 @@ Flow:
 
 ## Cart Flow
 
-File: `yob/api/cart.py`
+File: `yob_storefront/api/cart.py`
 
 ### Cart Creation
 
@@ -351,7 +389,12 @@ Flow:
 ### API Endpoints
 
 - `get_cart()`: loads or creates Cart, reprices it, returns enriched cart response.
-- `add_to_cart(item_code, qty=1)`: adds a new item or updates existing quantity.
+- `add_to_cart(item_code, qty=1)`: adds a new line, or **increments** an existing
+  one — `qty` is a delta, not a replacement total. One row is kept per item
+  rather than appending a second row for the same `item_code`, because ERPNext
+  evaluates a Pricing Rule's `min_qty`/`max_qty` against the ROW quantity: 4+4+3
+  accumulated on one row triggers a `min_qty=10` rule that three separate rows
+  would each fall short of. Not idempotent — a repeated call adds again.
 - `remove_from_cart(item_code)`: removes item from Draft Cart.
 - `clear_cart()`: removes all items.
 - `set_cart_contact(contact_person)`: validates Contact belongs to Customer and stores it on Cart.
@@ -362,7 +405,7 @@ Flow:
 
 ### Cart Response Shape
 
-File: `yob/services/cart_service.py`
+File: `yob_storefront/services/cart_service.py`
 
 `build_cart_response()` returns:
 
@@ -376,7 +419,7 @@ File: `yob/services/cart_service.py`
 
 ## Coupon Flow
 
-File: `yob/services/coupon_service.py`
+File: `yob_storefront/services/coupon_service.py`
 
 Flow:
 
@@ -396,7 +439,7 @@ Flow:
 
 ## Checkout Flow
 
-File: `yob/api/checkout.py`
+File: `yob_storefront/api/checkout.py`
 
 Endpoint:
 
@@ -420,7 +463,7 @@ Flow:
 
 ## Payment Flow
 
-File: `yob/api/payment.py`
+File: `yob_storefront/api/payment.py`
 
 ### Get Checkout Data
 
@@ -481,8 +524,8 @@ Flow:
 
 Files:
 
-- `yob/services/cart_service.py`
-- `yob/api/payment_method.py`
+- `yob_storefront/services/cart_service.py`
+- `yob_storefront/api/payment_method.py`
 
 Flow:
 
@@ -496,7 +539,7 @@ Flow:
 
 ## Address And Contact Flow
 
-File: `yob/api/address.py`
+File: `yob_storefront/api/address.py`
 
 ### Contacts
 
@@ -514,7 +557,7 @@ File: `yob/api/address.py`
 
 ## Order Flow
 
-File: `yob/api/order.py`
+File: `yob_storefront/api/order.py`
 
 Current active order APIs use ERPNext Sales Order:
 
@@ -525,7 +568,7 @@ There is also an older `checkout(address_name)` function that references `YOB Ca
 
 ## File Visibility Flow
 
-File: `yob/api/file_hooks.py`
+File: `yob_storefront/api/file_hooks.py`
 
 Flow:
 
@@ -536,7 +579,7 @@ Flow:
 
 ## Cache Flow
 
-File: `yob/utils/cache.py`
+File: `yob_storefront/utils/cache.py`
 
 Cache groups:
 

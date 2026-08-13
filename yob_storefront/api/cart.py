@@ -1,13 +1,19 @@
 import frappe
+from yob_core.api.boundary import yob_api
 from yob_storefront.api.response import (
     BILLING_ADDRESS_INVALID,
+    BILLING_ADDRESS_REQUIRED,
     CONTACT_INVALID,
+    CONTACT_REQUIRED,
+    COUPON_CODE_REQUIRED,
     HTTP_NOT_FOUND,
     HTTP_UNPROCESSABLE,
     ITEM_NOT_FOUND,
     QUANTITY_INVALID,
     SHIPPING_ADDRESS_INVALID,
+    SHIPPING_ADDRESS_REQUIRED,
     SHIPPING_NOT_APPLICABLE,
+    VALIDATION_FAILED,
     error_response,
     is_error,
     server_error,
@@ -65,7 +71,8 @@ def get_or_create_cart(customer):
 # =========================================================
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def get_cart(auth_context=None):
     try:
@@ -85,15 +92,7 @@ def get_cart(auth_context=None):
 
         cart.db_set("ordered_on", now_datetime(), update_modified=False)
         cart.db_set("checkout_by", frappe.session.user, update_modified=False)
-         
-        print(
-            frappe.db.sql("""
-                SELECT ordered_on, checkout_by
-                FROM `tabCart`
-                WHERE name=%s
-            """, (cart.name,), as_dict=True)
-        )
-        
+
         response_data = build_cart_response(cart, removed_items, price_updated_items)
 
         notice = "Cart loaded"
@@ -115,10 +114,19 @@ def get_cart(auth_context=None):
 # =========================================================
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def add_to_cart(item_code, qty=1, auth_context=None):
+def add_to_cart(item_code=None, qty=1, auth_context=None):
     try:
+        if not item_code:
+            return error_response(
+                VALIDATION_FAILED,
+                "Item code is required.",
+                field="item_code",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
         qty = float(qty)
         if qty <= 0:
             return error_response(
@@ -134,7 +142,17 @@ def add_to_cart(item_code, qty=1, auth_context=None):
         existing = next((row for row in cart.items if row.item_code == item_code), None)
 
         if existing:
-            existing.quantity = qty
+            # INCREMENT, not replace: `qty` is a delta. Kept on ONE row per item
+            # rather than appending a second row, because ERPNext evaluates a
+            # Pricing Rule's min_qty/max_qty against the ROW's quantity -- two
+            # rows of 5 would silently miss a min_qty=10 rule that one row of 10
+            # satisfies. One row also prices identically to a Desk-entered
+            # Sales Order.
+            #
+            # Callers send a delta, so this is NOT idempotent: a retried or
+            # double-submitted request adds twice. Use set_cart_item_qty-style
+            # absolute updates from a cart stepper if that matters.
+            existing.quantity = (existing.quantity or 0) + qty
         else:
             item = frappe.get_doc("Item", item_code)
             cart.append("items", {
@@ -175,10 +193,21 @@ def add_to_cart(item_code, qty=1, auth_context=None):
 # =========================================================
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def remove_from_cart(item_code, auth_context=None):
+def remove_from_cart(item_code=None, auth_context=None):
     try:
+        # Without this, a blank item_code matched no row, so the cart was
+        # repriced and saved for a removal that never happened.
+        if not item_code:
+            return error_response(
+                VALIDATION_FAILED,
+                "Item code is required.",
+                field="item_code",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
         customer = get_storefront_customer(auth_context)
         cart = get_or_create_cart(customer)
 
@@ -201,7 +230,8 @@ def remove_from_cart(item_code, auth_context=None):
 # =========================================================
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def clear_cart(auth_context=None):
     try:
@@ -267,10 +297,19 @@ def clear_cart(auth_context=None):
 #         return error("Failed to remove coupon")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def set_cart_contact(contact_person, auth_context=None):
+def set_cart_contact(contact_person=None, auth_context=None):
     try:
+        if not contact_person:
+            return error_response(
+                CONTACT_REQUIRED,
+                "Contact is required.",
+                field="contact_person",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
         customer = get_storefront_customer(auth_context)
         cart = get_or_create_cart(customer)
 
@@ -301,10 +340,19 @@ def set_cart_contact(contact_person, auth_context=None):
         return server_error("Set Cart Contact Error", "Failed to update contact")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def set_cart_billing_address(billing_address, auth_context=None):
+def set_cart_billing_address(billing_address=None, auth_context=None):
     try:
+        if not billing_address:
+            return error_response(
+                BILLING_ADDRESS_REQUIRED,
+                "Billing address is required.",
+                field="billing_address",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
         customer = get_storefront_customer(auth_context)
         cart = get_or_create_cart(customer)
 
@@ -344,10 +392,19 @@ def set_cart_billing_address(billing_address, auth_context=None):
         return server_error("Set Billing Error", "Failed to update billing address")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def set_cart_shipping_address(shipping_address, auth_context=None):
+def set_cart_shipping_address(shipping_address=None, auth_context=None):
     try:
+        if not shipping_address:
+            return error_response(
+                SHIPPING_ADDRESS_REQUIRED,
+                "Shipping address is required.",
+                field="shipping_address",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
         customer = get_storefront_customer(auth_context)
         cart = get_or_create_cart(customer)
 
@@ -390,11 +447,22 @@ def set_cart_shipping_address(shipping_address, auth_context=None):
 # =========================================================
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def apply_coupon(code, auth_context=None):
-     
+def apply_coupon(code=None, auth_context=None):
+
     # try:
+    # CouponService raises the same code for a blank value, but guarding here
+    # keeps the answer identical without first creating or loading a cart.
+    if not code:
+        return error_response(
+            COUPON_CODE_REQUIRED,
+            "Coupon code is required.",
+            field="code",
+            status_code=HTTP_UNPROCESSABLE,
+        )
+
     customer = get_storefront_customer(auth_context)
     
     cart = get_or_create_cart(customer)
@@ -431,7 +499,8 @@ def apply_coupon(code, auth_context=None):
 # =========================================================
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
+@yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def remove_coupon(auth_context=None):
     try:

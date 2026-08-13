@@ -24,7 +24,13 @@ APP_ROOT = pathlib.Path(__file__).resolve().parents[1]
 DELEGATING_HELPERS = {
     "process_success_payment",
     "process_pay_later",
-    "process_razorpay_payment",
+    # Provider dispatch is now gateway-neutral: process_razorpay_payment was
+    # replaced by one helper that serves every external gateway.
+    "process_gateway_payment",
+    # get_checkout_data dispatches on the payment source; each branch builds
+    # and returns a full envelope of its own.
+    "_cart_checkout",
+    "_sales_order_checkout",
 }
 
 # Whitelisted methods deliberately outside the public storefront contract.

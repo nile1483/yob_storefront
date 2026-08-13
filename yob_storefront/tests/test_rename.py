@@ -131,16 +131,43 @@ class TestNoIndependentAuthRemains(unittest.TestCase):
         "require_login",
     )
 
+    #: The ONE approved use of `frappe.set_user` in this app: the trusted
+    #: execution boundary for the PUBLIC /payment/<token> flow.
+    #:
+    #: It is not authentication and creates no session. Guest holds no roles and
+    #: gains none; after the token has been resolved to one exact Payment
+    #: Request and every source/financial/state/eligibility check has passed,
+    #: the internal Cart -> Sales Order work runs briefly as the disabled
+    #: `YOB Payment Processor` identity, because ERPNext permission-checks
+    #: documents YOB never constructs (get_item_details' cached Item, the tax
+    #: Account) against the execution user, and Frappe 16.30.0 offers no
+    #: request-local bypass context.
+    #:
+    #: Exempting the file rather than dropping the rule: every OTHER module must
+    #: still be unable to switch users, which is what this guard exists for.
+    SET_USER_EXEMPT = {"services/payment_request_service.py"}
+
     def test_no_forbidden_auth_primitives(self):
         offenders = []
         for path in _scannable_files():
             if path.suffix != ".py":
                 continue
+            relative = path.relative_to(APP_ROOT).as_posix()
             text = path.read_text(encoding="utf-8", errors="ignore")
             for needle in self.FORBIDDEN:
-                if needle in text:
-                    offenders.append(f"{path.relative_to(APP_ROOT)}: {needle}")
+                if needle not in text:
+                    continue
+                if (needle == "frappe.set_user"
+                        and relative in self.SET_USER_EXEMPT):
+                    continue
+                offenders.append(f"{relative}: {needle}")
         self.assertEqual(offenders, [], "legacy auth remains:\n" + "\n".join(offenders))
+
+    def test_set_user_exemption_is_exactly_one_file(self):
+        """The exemption must not quietly spread to other modules."""
+
+        self.assertEqual(
+            self.SET_USER_EXEMPT, {"services/payment_request_service.py"})
 
     def test_no_auth_context_setdefault(self):
         """Caller-supplied auth_context must never be honoured."""

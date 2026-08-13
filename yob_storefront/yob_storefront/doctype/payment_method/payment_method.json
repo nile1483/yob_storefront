@@ -13,6 +13,7 @@
   "description",
   "column_break_kvpy",
   "method_code",
+  "payment_gateway",
   "display_order",
   "icon"
  ],
@@ -53,6 +54,13 @@
    "fieldname": "method_code",
    "fieldtype": "Data",
    "label": "Method Code"
+  },
+  {
+   "fieldname": "payment_gateway",
+   "fieldtype": "Link",
+   "label": "Payment Gateway",
+   "options": "Payment Gateway",
+   "description": "Frappe Payments gateway that owns this method's credentials and provider configuration. Leave EMPTY for internal YOB methods such as Pay Later, which have no external provider."
   },
   {
    "fieldname": "display_order",

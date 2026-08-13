@@ -94,3 +94,11 @@ PAYMENT_NOT_CAPTURED = "payment_not_captured"
 PAYMENT_AMOUNT_MISMATCH = "payment_amount_mismatch"
 PAYMENT_CURRENCY_MISMATCH = "payment_currency_mismatch"
 PAYMENT_REFERENCE_INVALID = "payment_reference_invalid"
+# The Cart no longer matches the obligation the Payment Request was issued for.
+# A Payment Request is immutable, so the answer is never a re-priced payment
+# link: the buyer returns to the cart and starts checkout again.
+PAYMENT_REQUEST_STALE = "payment_request_stale"
+# The provider failed AFTER the local obligation was durably committed. The
+# Sales Order and Payment Request still exist and the attempt is retryable --
+# this code must never be read as "nothing happened".
+PAYMENT_PROVIDER_ERROR = "payment_provider_error"

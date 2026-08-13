@@ -108,6 +108,7 @@ app_include_js = "/assets/yob_storefront/js/yob.js"
 # Registers the STOREFRONT application in yob_auth so a fresh install is
 # functional. Grants no user access -- see yob_storefront/install.py.
 after_install = "yob_storefront.install.after_install"
+after_migrate = "yob_storefront.install.after_migrate"
 
 # Uninstallation
 # ------------
@@ -154,6 +155,15 @@ after_install = "yob_storefront.install.after_install"
 # Hook on document methods and events
 
 doc_events = {
+    # Keeps the YOB-managed `YOB Storefront Buyer` role in step with STOREFRONT
+    # grants. Registered here (not in yob_auth) because yob_auth must never know
+    # about a solution app; the handlers no-op for other applications.
+    "YOB User Application Access": {
+        "after_insert": "yob_storefront.permissions.storefront_role.on_application_access_update",
+        "on_update": "yob_storefront.permissions.storefront_role.on_application_access_update",
+        "on_trash": "yob_storefront.permissions.storefront_role.on_application_access_trash",
+    },
+
     "File": {
         "after_insert": "yob_storefront.api.file_hooks.make_public_file",
         "on_update": "yob_storefront.api.file_hooks.make_public_file"
