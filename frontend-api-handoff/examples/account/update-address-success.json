@@ -1,0 +1,21 @@
+{
+  "message": {
+    "data": {
+      "name": "Example Billing-Billing",
+      "address_title": "Example Billing",
+      "address_type": "Billing",
+      "address_line1": "2 Example House, Example Road",
+      "address_line2": "Suite 4",
+      "city": "Exampleton",
+      "state": "Gujarat",
+      "pincode": "000000",
+      "country": "India",
+      "phone": "+91 00000 00000",
+      "email": "buyer@example.com",
+      "is_primary_address": 1,
+      "is_shipping_address": 0,
+      "display": "2 Example House, Example Road<br>Suite 4<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\n"
+    },
+    "notice": "Address updated"
+  }
+}

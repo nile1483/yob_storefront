@@ -1,0 +1,12 @@
+{
+  "_comment": "HTTP 409. A Cart, a historical Sales Order, or the Customer default still references this address. It still EXISTS -- keep it in the list. Nothing is detached automatically, so this is not retryable. The referring document is deliberately not named.",
+  "message": {
+    "errors": [
+      {
+        "code": "address_in_use",
+        "detail": "This address is currently in use and can't be deleted.",
+        "field": "name"
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "_comment": "HTTP 409, the Contact mirror of delete-address-in-use-409. Previously this escaped as a raw Frappe LinkExistsError at HTTP 417 with Desk HTML in _server_messages.",
+  "message": {
+    "errors": [
+      {
+        "code": "contact_in_use",
+        "detail": "This contact is currently in use and can't be deleted.",
+        "field": "name"
+      }
+    ]
+  }
+}

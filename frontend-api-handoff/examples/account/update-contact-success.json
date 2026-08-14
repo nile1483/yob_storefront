@@ -1,0 +1,18 @@
+{
+  "_comment": "email/phone are read back from the SAVED record. They previously echoed the request, so an omitted email reported null while the contact still had one.",
+  "message": {
+    "data": {
+      "name": "Example Contact-Example Buyer Ltd",
+      "full_name": "Example Contact",
+      "email": "buyer@example.com",
+      "phone": "+91 00000 00000",
+      "designation": "Manager",
+      "company_name": null,
+      "gender": null,
+      "salutation": null,
+      "first_name": "Example",
+      "last_name": "Contact"
+    },
+    "notice": "Contact updated"
+  }
+}

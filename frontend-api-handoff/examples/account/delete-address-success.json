@@ -1,0 +1,7 @@
+{
+  "_comment": "`data` is an empty object. Re-read get_addresses; the list cache is already invalidated server-side.",
+  "message": {
+    "data": {},
+    "notice": "Address deleted"
+  }
+}

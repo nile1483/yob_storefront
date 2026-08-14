@@ -3,8 +3,11 @@ from yob_core.api.boundary import yob_api
 from yob_auth.security.decorators import require_application
 from yob_storefront.utils.context import STOREFRONT_APP, get_storefront_customer
 from yob_storefront.api.response import (
+    ADDRESS_IN_USE,
     ADDRESS_NOT_FOUND,
+    CONTACT_IN_USE,
     CONTACT_NOT_FOUND,
+    HTTP_CONFLICT,
     HTTP_CREATED,
     HTTP_NOT_FOUND,
     HTTP_UNPROCESSABLE,
@@ -19,7 +22,180 @@ from frappe.utils import cint
 # ---------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------
- 
+
+
+def supplied(data, key):
+    """True when the caller SENT ``key``, whatever value it carries.
+
+    Presence, not truthiness. ``""``, ``0`` and ``False`` are legitimate
+    supplied values: the difference between "the client did not touch this
+    field" and "the client deliberately cleared it" is exactly the difference
+    between preserving stored data and destroying it.
+
+    ``if data.get(key):`` cannot express that. It reads a deliberate clear as
+    absence, so a cleared field silently keeps its old value -- and, in the
+    mirror-image bug this replaces, an ABSENT field was read as an empty value
+    and wiped what was stored.
+    """
+
+    return key in data
+
+
+# Request key -> Address fieldname. The request name is the published contract
+# and does not always match ERPNext's: the client sends `email`, the DocType
+# stores `email_id`.
+ADDRESS_VALUE_FIELDS = {
+    "address_title": "address_title",
+    "address_type": "address_type",
+    "address_line1": "address_line1",
+    "address_line2": "address_line2",
+    "city": "city",
+    "state": "state",
+    "country": "country",
+    "pincode": "pincode",
+    "email": "email_id",
+    "phone": "phone",
+    "fax": "fax",
+    "tax_category": "tax_category",
+    "gstin": "gstin",
+    "gst_category": "gst_category",
+    "gst_state": "gst_state",
+    "gst_state_number": "gst_state_number",
+}
+
+# Checkbox fields: stored as 0/1, so a supplied value is coerced with cint.
+ADDRESS_FLAG_FIELDS = {
+    "is_primary_address": "is_primary_address",
+    "is_shipping_address": "is_shipping_address",
+    "disabled": "disabled",
+}
+
+ADDRESS_FIELD_TO_REQUEST_KEY = {
+    fieldname: key
+    for key, fieldname in {**ADDRESS_VALUE_FIELDS, **ADDRESS_FLAG_FIELDS}.items()
+}
+
+
+def apply_address_fields(doc, data):
+    """Merge the SUPPLIED address fields onto ``doc``.
+
+    Omitted fields are not touched, so on an update they keep their stored
+    value. This is the whole of the partial-update contract; everything else
+    below is validation and error mapping.
+    """
+
+    for key, fieldname in ADDRESS_VALUE_FIELDS.items():
+        if supplied(data, key):
+            value = data.get(key)
+            doc.set(fieldname, value.strip() if isinstance(value, str) else value)
+
+    for key, fieldname in ADDRESS_FLAG_FIELDS.items():
+        if supplied(data, key):
+            doc.set(fieldname, cint(data.get(key)))
+
+
+def missing_required_address_field(doc):
+    """The first required Address field left blank, or ``None``.
+
+    Read from the LIVE meta rather than a hardcoded list, so requirements this
+    module does not own are honoured without being restated here. On this site
+    that matters: india_compliance adds ``gst_category`` as a required custom
+    field, and a hardcoded list would miss it and let the save fail as a
+    generic 500 instead of an attributable validation error.
+
+    Checking here rather than relying on Frappe's own mandatory check is what
+    makes FIELD ATTRIBUTION possible -- ``MandatoryError`` arrives as one string
+    naming the doctype and docname, not as structured data.
+    """
+
+    for df in frappe.get_meta("Address").fields:
+        if not df.reqd:
+            continue
+
+        value = doc.get(df.fieldname)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return df.fieldname
+
+    return None
+
+
+def safe_validation_detail(exc, fallback):
+    """Framework validation text, stripped of anything Desk-shaped.
+
+    Frappe and india_compliance write these messages for a human, but they are
+    Desk humans: the text can carry HTML and ``/app/...`` anchors naming other
+    documents. A storefront caller has no Desk, so tags are removed and any
+    message still carrying a link or URL is dropped for a generic sentence
+    rather than leaked.
+    """
+
+    from frappe.utils import strip_html
+
+    text = " ".join(strip_html(str(exc) or "").split())
+
+    if not text or "/app/" in text or "http" in text.lower() or "<" in text:
+        return fallback
+
+    return text[:200]
+
+
+def validation_error_response(exc, fallback, field=None):
+    """A Frappe/ERPNext/India-Compliance validation refusal as a YOB error.
+
+    Without this the caller sees one of two wrong things: a generic 500 (the
+    request was fine, the DATA was not), or -- because a bare ValidationError
+    carries ``http_status_code`` 417 -- the core boundary's passthrough with the
+    raw exception string as detail.
+    """
+
+    return error_response(
+        VALIDATION_FAILED,
+        safe_validation_detail(exc, fallback),
+        field=field,
+        status_code=HTTP_UNPROCESSABLE,
+    )
+
+
+def delete_owned_doc(doctype, name, in_use_code, in_use_detail):
+    """Delete a record the caller already owns, or answer 409 if it is linked.
+
+    Returns ``None`` on success, or an error envelope when Frappe refuses.
+
+    Two things have to be undone when Frappe refuses:
+
+    1. ``on_trash`` has already run by the time the link check fires, so the
+       attempt is rolled back to a savepoint rather than left half-applied.
+
+    2. Frappe refuses by calling ``frappe.throw`` with a Desk anchor naming the
+       linked document. That message lands in ``frappe.local.message_log``, and
+       the framework serialises that log into ``_server_messages`` on the HTTP
+       response -- so it would reach the browser ALONGSIDE our clean envelope,
+       carrying HTML, a ``/app/...`` URL and the referring docname. The log is
+       therefore truncated back to its pre-delete length. Truncated, not
+       cleared: messages queued earlier in the request are not ours to discard.
+
+    Only ``LinkExistsError`` is converted. Anything else propagates, because a
+    genuine fault must not be reported to the customer as "this is in use".
+    """
+
+    messages_before = len(frappe.local.message_log)
+
+    frappe.db.savepoint("yob_account_delete")
+    try:
+        frappe.delete_doc(doctype, name, ignore_permissions=True)
+    except frappe.LinkExistsError:
+        frappe.db.rollback(save_point="yob_account_delete")
+        frappe.local.message_log = frappe.local.message_log[:messages_before]
+
+        return error_response(
+            in_use_code,
+            in_use_detail,
+            field="name",
+            status_code=HTTP_CONFLICT,
+        )
+
+    return None
+
 
 def check_address_owner(address_name, customer):
     return frappe.db.exists(
@@ -175,9 +351,13 @@ def add_contact(auth_context=None):
             "link_name": customer.name
         })
 
-        doc.insert(ignore_permissions=True)
+        try:
+            doc.insert(ignore_permissions=True)
+        except frappe.ValidationError as exc:
+            return validation_error_response(
+                exc, "The contact could not be saved. Please check the values.")
 
-        clear_customer_contact_cache(customer)
+        clear_customer_contact_cache(customer.name)
 
         return success_response({
             "name": doc.name,
@@ -226,8 +406,19 @@ def update_contact(auth_context=None):
         if data.get("salutation") is not None:
             contact.salutation = data.get("salutation")
 
-        if data.get("first_name"):
-            contact.first_name = data.get("first_name").strip()
+        if supplied(data, "first_name"):
+            # Presence, not truthiness: an explicitly empty first_name used to
+            # be silently ignored, so a caller clearing a required field was
+            # told the update succeeded while nothing had changed.
+            first_name = (data.get("first_name") or "").strip()
+            if not first_name:
+                return error_response(
+                    VALIDATION_FAILED,
+                    "First name is required.",
+                    field="first_name",
+                    status_code=HTTP_UNPROCESSABLE,
+                )
+            contact.first_name = first_name
 
         if data.get("last_name") is not None:
             contact.last_name = data.get("last_name")
@@ -259,15 +450,23 @@ def update_contact(auth_context=None):
                     "is_primary_mobile_no": 1
                 })
 
-        contact.save(ignore_permissions=True)
+        try:
+            contact.save(ignore_permissions=True)
+        except frappe.ValidationError as exc:
+            return validation_error_response(
+                exc, "The contact could not be saved. Please check the values.")
 
         clear_customer_contact_cache(customer.name)
 
         return success_response({
             "name": contact.name,
             "full_name": contact.full_name,
-            "email": data.get("email").strip() if data.get("email") else None,
-            "phone": data.get("phone").strip() if data.get("phone") else None,
+            # Read back from the SAVED document, not echoed from the request.
+            # Echoing meant a partial update that omitted `email` reported
+            # `email: null` while the contact still had one -- a response that
+            # contradicted the record it had just written.
+            "email": contact.email_ids[0].email_id if contact.email_ids else None,
+            "phone": contact.phone_nos[0].phone if contact.phone_nos else None,
             "designation": contact.designation,
             "company_name": contact.company_name,
             "gender": contact.gender,
@@ -285,33 +484,42 @@ def update_contact(auth_context=None):
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
 def delete_contact(name=None, auth_context=None):
 
-    # try:
-    if not name:
-        return error_response(
-            VALIDATION_FAILED,
-            "Contact name is required.",
-            field="name",
-            status_code=HTTP_UNPROCESSABLE,
-        )
+    try:
+        if not name:
+            return error_response(
+                VALIDATION_FAILED,
+                "Contact name is required.",
+                field="name",
+                status_code=HTTP_UNPROCESSABLE,
+            )
 
-    customer = get_storefront_customer(auth_context)
-     
-    if not check_contact_owner(name, customer):
-        return error_response(
-            CONTACT_NOT_FOUND,
-            "Contact not found.",
-            field="name",
-            status_code=HTTP_NOT_FOUND,
-        )
+        customer = get_storefront_customer(auth_context)
 
-    frappe.delete_doc("Contact", name, ignore_permissions=True)
+        if not check_contact_owner(name, customer):
+            return error_response(
+                CONTACT_NOT_FOUND,
+                "Contact not found.",
+                field="name",
+                status_code=HTTP_NOT_FOUND,
+            )
 
-    clear_customer_contact_cache(customer.name)
+        # The exception boundary here was commented out, so a Cart-selected or
+        # order-referenced Contact escaped as a raw Frappe LinkExistsError --
+        # HTTP 417 with `_server_messages` carrying Desk HTML and the name of
+        # the referring document. Ordinary link integrity is a business
+        # refusal, not a crash, and it now answers as one.
+        conflict = delete_owned_doc(
+            "Contact", name, CONTACT_IN_USE,
+            "This contact is currently in use and can't be deleted.")
+        if conflict:
+            return conflict
 
-    return success_response({}, notice="Contact deleted")
+        clear_customer_contact_cache(customer.name)
 
-    # except Exception:
-    #     return server_error("Delete Contact Error", "Failed to delete contact")
+        return success_response({}, notice="Contact deleted")
+
+    except Exception:
+        return server_error("Delete Contact Error", "Failed to delete contact")
 
 
 # =========================================================
@@ -382,41 +590,32 @@ def add_address(auth_context=None):
 
         doc = frappe.new_doc("Address")
 
-        doc.address_title = data.get("address_title")
-        doc.address_type = data.get("address_type") or "Billing"
-        doc.address_line1 = data.get("address_line1")
-        doc.address_line2 = data.get("address_line2")
-
-        doc.city = data.get("city")
-        doc.state = data.get("state")
-        doc.country = data.get("country")
-        doc.pincode = data.get("pincode")
-
-        # Contact info
-        doc.email_id = data.get("email")
-        doc.phone = data.get("phone")
-        doc.fax = data.get("fax")
-
-        # ERPNext flags
-        doc.is_primary_address = cint(data.get("is_primary_address") or 0)
-        doc.is_shipping_address = cint(data.get("is_shipping_address") or 0)
-        doc.disabled = cint(data.get("disabled") or 0)
-
-        # Tax / GST
-        doc.tax_category = data.get("tax_category")
-        doc.gstin = data.get("gstin")
-        doc.gst_category = data.get("gst_category")
-        doc.gst_state = data.get("gst_state")
-        doc.gst_state_number = data.get("gst_state_number")
+        # Same field map as update_address, so create and edit cannot drift
+        # apart. On a new document "omitted" simply means "left at its default".
+        doc.address_type = "Billing"          # default, overridden if supplied
+        apply_address_fields(doc, data)
 
         doc.append("links", {
             "link_doctype": "Customer",
             "link_name": customer.name
         })
 
-        doc.insert(ignore_permissions=True)
+        missing = missing_required_address_field(doc)
+        if missing:
+            return error_response(
+                VALIDATION_FAILED,
+                f"{frappe.get_meta('Address').get_label(missing)} is required.",
+                field=ADDRESS_FIELD_TO_REQUEST_KEY.get(missing, missing),
+                status_code=HTTP_UNPROCESSABLE,
+            )
 
-        clear_customer_address_cache(customer)
+        try:
+            doc.insert(ignore_permissions=True)
+        except frappe.ValidationError as exc:
+            return validation_error_response(
+                exc, "The address could not be saved. Please check the values.")
+
+        clear_customer_address_cache(customer.name)
 
         return success_response({
             "name": doc.name,
@@ -467,36 +666,42 @@ def update_address(auth_context=None):
 
         doc = frappe.get_doc("Address", name)
 
-        doc.address_title = data.get("address_title")
-        doc.address_type = data.get("address_type") or "Billing"
-        doc.address_line1 = data.get("address_line1")
-        doc.address_line2 = data.get("address_line2")
+        # PARTIAL UPDATE. Only fields the caller actually sent are touched;
+        # everything else keeps its stored value.
+        #
+        # This previously assigned every field unconditionally from form_dict,
+        # which made an edit form that posts only the inputs it renders destroy
+        # everything it does not -- address_line2, phone, email_id and the
+        # is_primary_address / is_shipping_address flags. The call SUCCEEDED, so
+        # nothing warned anyone that data had been lost.
+        #
+        # The document is NOT renamed: address_title is an ordinary field here.
+        # Historical Sales Orders hold `customer_address` as a link, and a
+        # rename would cascade into them.
+        apply_address_fields(doc, data)
 
-        doc.city = data.get("city")
-        doc.state = data.get("state")
-        doc.country = data.get("country")
-        doc.pincode = data.get("pincode")
+        missing = missing_required_address_field(doc)
+        if missing:
+            # Attributed here rather than left to Frappe's MandatoryError, which
+            # arrives as one opaque string and would surface as a generic 500.
+            return error_response(
+                VALIDATION_FAILED,
+                f"{frappe.get_meta('Address').get_label(missing)} is required.",
+                field=ADDRESS_FIELD_TO_REQUEST_KEY.get(missing, missing),
+                status_code=HTTP_UNPROCESSABLE,
+            )
 
-        # Contact info
-        doc.email_id = data.get("email")
-        doc.phone = data.get("phone")
-        doc.fax = data.get("fax")
+        try:
+            doc.save(ignore_permissions=True)
+        except frappe.ValidationError as exc:
+            # Covers ERPNext and india_compliance rules -- the required state
+            # for an Indian address, GSTIN format, pincode. Those validators
+            # stay the single source of truth; this only translates their
+            # refusal into the storefront's envelope.
+            return validation_error_response(
+                exc, "The address could not be saved. Please check the values.")
 
-        # ERPNext flags
-        doc.is_primary_address = cint(data.get("is_primary_address") or 0)
-        doc.is_shipping_address = cint(data.get("is_shipping_address") or 0)
-        doc.disabled = cint(data.get("disabled") or 0)
-
-        # Tax / GST
-        doc.tax_category = data.get("tax_category")
-        doc.gstin = data.get("gstin")
-        doc.gst_category = data.get("gst_category")
-        doc.gst_state = data.get("gst_state")
-        doc.gst_state_number = data.get("gst_state_number")
-
-        doc.save(ignore_permissions=True)
-
-        clear_customer_address_cache(customer)
+        clear_customer_address_cache(customer.name)
 
         return success_response({
             "name": doc.name,
@@ -543,9 +748,17 @@ def delete_address(name=None, auth_context=None):
                 status_code=HTTP_NOT_FOUND,
             )
 
-        frappe.delete_doc("Address", name, ignore_permissions=True)
+        # Link integrity is NOT worked around. A Cart selection, a historical
+        # Sales Order or the Customer's own default address all legitimately
+        # block the delete, and detaching them automatically would either
+        # strand a live checkout or rewrite history.
+        conflict = delete_owned_doc(
+            "Address", name, ADDRESS_IN_USE,
+            "This address is currently in use and can't be deleted.")
+        if conflict:
+            return conflict
 
-        clear_customer_address_cache(customer)
+        clear_customer_address_cache(customer.name)
 
         return success_response({}, notice="Address deleted")
 

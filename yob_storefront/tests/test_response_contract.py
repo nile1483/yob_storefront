@@ -31,6 +31,11 @@ DELEGATING_HELPERS = {
     # and returns a full envelope of its own.
     "_cart_checkout",
     "_sales_order_checkout",
+    # Account CRUD: turns a Frappe/ERPNext/India-Compliance validation refusal
+    # into the standard `validation_failed` envelope, with the framework's
+    # message sanitised. Shared by add/update of both Address and Contact so
+    # the four endpoints cannot drift apart.
+    "validation_error_response",
 }
 
 # Whitelisted methods deliberately outside the public storefront contract.

@@ -240,6 +240,90 @@ Notes:
 
 There are no other address/contact endpoints in the storefront contract.
 
+### 4.1 `update_address` / `update_contact` are PARTIAL updates
+
+**Send the fields your form edits. Nothing else.** Both endpoints key on whether
+a field was **present in the request**, not on whether its value is truthy:
+
+| You send | Result |
+|---|---|
+| field omitted | **unchanged** — the stored value is preserved |
+| field with a value | validated and applied |
+| field with an explicit empty value (`""`) | **cleared**, where the field is optional |
+| field with an invalid value | `validation_failed`, and the record is untouched |
+
+```jsonc
+// The address has address_line2, phone, email_id and both default flags set.
+{ "name": "Example Billing-Billing", "address_line1": "2 New Road" }
+// -> address_line1 changes. Everything else is exactly as it was.
+```
+
+**Do not resend untouched optional fields to protect them.** That was a real
+workaround for a real bug — `update_address` used to assign every field
+unconditionally, so an omitted field was written as blank and silently
+destroyed. It no longer behaves that way, and padding the payload now risks the
+opposite mistake: sending `""` for a field the user never touched will **clear**
+it, because an explicit empty value is a deliberate instruction.
+
+`name` is required and identifies the record. It is **not** editable — changing
+`address_title` renames nothing, so document names and every link pointing at
+them stay stable.
+
+Both are **idempotent**: sending the same payload twice converges on the same
+record.
+
+Errors: `validation_failed` (422, with `field` where the failing field can be
+identified), `address_not_found` / `contact_not_found` (404).
+
+### 4.2 Deleting may legitimately be refused
+
+`delete_address` / `delete_contact` take `name` and return an empty `data` on
+success. Deletion is **conditional**: Frappe refuses to delete a record another
+document still points at.
+
+| Outcome | Status | Code |
+|---|---|---|
+| deleted | 200 | — |
+| unknown, or not yours | 404 | `address_not_found` / `contact_not_found` |
+| still referenced | **409** | **`address_in_use` / `contact_in_use`** |
+
+An address or contact is "in use" when a **Cart** has it selected, a
+**historical Sales Order** references it, or it is the **Customer's default**.
+
+**Nothing is detached automatically.** The backend will not clear a Cart's
+selection or rewrite an order so a delete can proceed — that would either break
+a live checkout or alter history. The customer must change the selection
+themselves first.
+
+The 409 carries **only the code and a plain sentence**. It deliberately does not
+name the referring documents: identifying which order or cart blocks the delete
+is internal information, and Frappe's own message for this case embeds an
+absolute Desk URL. Show your own message from the code; there is nothing to
+parse.
+
+> **404 and 409 mean different things.** 404 is terminal — remove the row.
+> 409 means the record still exists and is still valid; leave it in the list.
+
+### 4.3 After a mutation: re-read, never auto-retry
+
+**Re-read the list after every successful mutation.** The server invalidates its
+own list cache on write, so a `get_addresses` / `get_contacts` immediately after
+a write returns the new state — you do not need to wait, poll, or bust a cache.
+
+**Do not automatically retry a delete whose response you did not receive.**
+Update is safe to repeat; delete is not, and the danger is not a double
+deletion:
+
+```
+delete succeeds -> response lost -> client retries -> 404 not_found
+```
+
+That 404 is indistinguishable from "this never existed", so an automatic retry
+turns a **success** into what looks like an error. On an uncertain delete,
+**re-read the list** and see whether the record is gone. The same applies to any
+generic mutation-retry layer: there is no server-side request-deduplication for
+these endpoints, so do not add a blanket client-side retry either.
+
 ---
 
 ## 5. Checkout cart selections — authenticated
@@ -445,8 +529,8 @@ instead — same shape, no session needed.
 
 | Endpoint | Method | Params |
 |---|---|---|
-| `order.get_orders` | GET | — |
-| `order.get_order_details` | GET | `order_id` |
+| `order.get_orders` | GET | **none** |
+| `order.get_order_details` | GET | `order_id` (**required**) |
 
 Both are scoped to the authenticated Customer server-side. A non-existent order
 and someone else's order answer **identically** (`order_not_found`, 404), so the
@@ -454,12 +538,24 @@ response cannot be used to probe for other customers' orders.
 
 ### `GET order.get_orders`
 
-Array of rows plus `meta.count`. Each row:
+**Takes no parameters.** There is no filter, search, date range, page or limit —
+sending any of them changes nothing. The whole list is returned every time.
+
+Array of rows plus `meta.count`. A row has **exactly** these six fields:
 
 ```json
 { "name": "SAL-ORD-2026-00001", "status": "Draft", "grand_total": 1350.0,
   "currency": "INR", "transaction_date": "2026-08-13", "delivery_date": "2026-08-13" }
 ```
+
+**Ordering: `creation` descending — newest order first.** The server sorts;
+do not re-sort client-side.
+
+> The sort key is the record's **creation timestamp**, not `transaction_date`.
+> These differ: several orders placed on the same day share one
+> `transaction_date` but still come back newest-first. Sorting the array by
+> `transaction_date` in the client would scramble that order, and `creation`
+> is **not** in the response, so the server order is the only way to know it.
 
 > **`currency` is per row.** Each order carries its own stored currency. Never
 > format an order-list amount using a store default or environment config — an
@@ -467,11 +563,58 @@ Array of rows plus `meta.count`. Each row:
 
 ### `GET order.get_order_details`
 
-Totals: `original_total`, `discount`, `subtotal`, `net_total`, `tax`,
-`grand_total`, `rounded_total`, `currency`.
-Contact: `contact_person`, `contact_email`, `contact_mobile`.
-Plus `items[]`, `taxes[]`, `payment_logs[]`, `payment_terms_template`,
-`tc_name`, `terms`.
+`order_id` is **required**. Omitting it answers **422 `validation_failed`** with
+`field: "order_id"` — it is not treated as "list all".
+
+The response object has **exactly these 26 keys**:
+
+| Group | Fields |
+|---|---|
+| Identity | `name`, `customer`, `status` |
+| Dates | `transaction_date`, `delivery_date` (`"YYYY-MM-DD"`) |
+| Money | `currency`, `original_total`, `discount`, `subtotal`, `net_total`, `tax`, `grand_total`, `rounded_total` |
+| Contact | `contact_person`, `contact_email`, `contact_mobile` |
+| Address | `billing_address_name`, `shipping_address_name`, `billing_address_display`, `shipping_address_display` |
+| Terms | `payment_terms_template`, `tc_name`, `terms` |
+| Collections | `items[]`, `taxes[]`, `payment_logs[]` |
+
+Every scalar above may be `null` except `name`, `customer`, `status` and
+`currency`. The three collections are always arrays, possibly empty.
+
+`items[]` rows:
+
+```
+item_code  item_name  description  image  qty  uom
+price_list_rate  rate  discount_percentage  discount_amount  amount  net_amount
+```
+
+`payment_logs[]` rows (Razorpay Payment Log, newest first; empty for an unpaid
+or Pay Later order):
+
+```
+name  payment_status  payment_method  payment_amount  currency
+razorpay_order_id  razorpay_payment_id  email  contact  creation
+```
+
+> `payment_method` here is the **provider's** method string (`"netbanking"`,
+> `"card"`, …) — Razorpay's value for how the payer actually paid. It is not
+> the YOB Payment Method `name` you send to `process_payment`.
+
+> **`taxes[]` is passed through raw** from ERPNext's `Sales Taxes and Charges`
+> child table, not projected into a YOB shape. Its columns are ERPNext's and are
+> **not pinned by this contract** — treat them as display-only and do not build
+> required DTO fields on them. Every real order observed on the backend so far
+> has `taxes: []`, so no row shape has been verified against live data.
+
+#### Contact fields come from the order, not the Contact master
+
+`contact_person` / `contact_email` / `contact_mobile` are read from the Sales
+Order's own stored fields, so editing a Contact does not rewrite past orders —
+the same guarantee the addresses have below.
+
+They are, however, **frequently `null`** on orders placed through storefront
+checkout: only `contact_person` is populated at commitment today. Render them
+defensively and do not require them.
 
 #### Addresses — historical snapshot, stable types
 

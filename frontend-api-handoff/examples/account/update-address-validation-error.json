@@ -1,0 +1,12 @@
+{
+  "_comment": "Sent { name, city: \"\" } -- an explicit clear of a REQUIRED field. The record is untouched. `field` names what to fix; previously this was a generic 500 with no field.",
+  "message": {
+    "errors": [
+      {
+        "code": "validation_failed",
+        "detail": "City/Town is required.",
+        "field": "city"
+      }
+    ]
+  }
+}

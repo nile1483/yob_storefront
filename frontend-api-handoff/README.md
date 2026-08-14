@@ -1,6 +1,11 @@
 # YOB Storefront — Frontend API Handoff
 
 **Generated:** 2026-08-13
+**Last refreshed:** 2026-08-14 — Orders (Phase 14.5): immutable order-time
+address snapshots, per-row order currency, documented list ordering.
+Account CRUD (Phase 15B): `update_address` is a genuine partial update, delete
+link conflicts answer 409 `address_in_use` / `contact_in_use`, list caches
+invalidate on write
 **Backend state:** Checkout + Razorpay payment lifecycle complete and verified
 **Application code:** `STOREFRONT`
 
@@ -164,6 +169,22 @@ Run through this after importing the package:
 - [ ] Confirm Razorpay loader URL, options, and that `amount` is passed
       unchanged (it is already in paise)
 - [ ] Confirm the token is never written to `localStorage` / `sessionStorage`
+- [ ] **Orders:** remove any `billing_address.*` / `shipping_address.*` object
+      binding — those objects no longer exist. Bind `*_address_display` and
+      render as **plain text** (`white-space: pre-line`), never `[innerHTML]`
+- [ ] **Orders:** format each list row with `row.currency`; delete any
+      environment/default-currency fallback
+- [ ] **Orders:** remove any client-side sort of the order list — the server
+      returns `creation` desc, and `creation` is not in the response
+- [ ] **Account:** `update_address` sends only the edited fields. Remove any
+      "resend the whole object so nothing is lost" workaround, and make sure the
+      payload is **not** padded with `""` — that now *clears* those fields
+- [ ] **Account:** handle **409** `address_in_use` / `contact_in_use` as its own
+      outcome — the record still exists, stays in the list, and is not retryable
+- [ ] **Account:** no automatic retry on `delete_address` / `delete_contact`;
+      on an uncertain delete, re-read the list instead
+- [ ] **Account:** re-read the list after a successful mutation, and drop any
+      cache-busting/delay workaround — the server invalidates its own cache
 - [ ] Compare error mappings against `ERROR-CODES.md`
 - [ ] Update mock/fixture data to match `examples/`
 - [ ] Run unit + E2E + build

@@ -46,6 +46,11 @@
     {
       "key": "razorpay_signature",
       "value": "<from Razorpay callback>"
+    },
+    {
+      "key": "order_id",
+      "value": "SAL-ORD-2026-00001",
+      "description": "a Sales Order id belonging to the logged-in customer"
     }
   ],
   "item": [
@@ -716,7 +721,7 @@
               ],
               "query": []
             },
-            "description": "AUTH",
+            "description": "AUTH\n\n200 deleted | 404 address_not_found | 409 address_in_use (Cart, historical Sales Order, or Customer default still references it). 409 is NOT retryable and detaches nothing. Never auto-retry a delete whose response was lost -- re-read the list.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"\"\n}"
@@ -749,7 +754,7 @@
               ],
               "query": []
             },
-            "description": "AUTH",
+            "description": "AUTH\n\n200 deleted | 404 contact_not_found | 409 contact_in_use. As delete_address: not retryable, nothing auto-detached.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"\"\n}"
@@ -832,10 +837,10 @@
               ],
               "query": []
             },
-            "description": "AUTH",
+            "description": "AUTH\n\nPARTIAL UPDATE: send `name` + only the fields you edit. Omitted = unchanged. Explicit \"\" = CLEARED. Do not pad the payload to preserve fields -- that now clears them. Idempotent.",
             "body": {
               "mode": "raw",
-              "raw": "{}"
+              "raw": "{\n  \"name\": \"{{billing_address_name}}\",\n  \"address_line1\": \"2 Example House, Example Road\"\n}"
             }
           }
         },
@@ -865,7 +870,7 @@
               ],
               "query": []
             },
-            "description": "AUTH",
+            "description": "AUTH\n\nPARTIAL UPDATE, same semantics as update_address. email/phone in the response come from the saved record.",
             "body": {
               "mode": "raw",
               "raw": "{}"
@@ -1053,7 +1058,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.order.get_order_details",
+              "raw": "{{base_url}}/api/method/yob_storefront.api.order.get_order_details?order_id={{order_id}}",
               "host": [
                 "{{base_url}}"
               ],
@@ -1062,9 +1067,15 @@
                 "method",
                 "yob_storefront.api.order.get_order_details"
               ],
-              "query": []
+              "query": [
+                {
+                  "key": "order_id",
+                  "value": "{{order_id}}",
+                  "description": "REQUIRED -- from get_orders[].name. Omitting it returns 422 validation_failed."
+                }
+              ]
             },
-            "description": "AUTH\n\nAddresses: use `billing_address_display` / `shipping_address_display` (plain text, historical snapshot). The `*_address_name` fields are identifiers only. The old `billing_address`/`shipping_address` objects were removed."
+            "description": "AUTH\n\n`order_id` is REQUIRED (422 validation_failed if omitted). Unknown or another customer's order -> 404 order_not_found, identically.\n\nAddresses: use `billing_address_display` / `shipping_address_display` -- plain text, historical snapshot, never HTML. The `*_address_name` fields are identifiers only. The old `billing_address`/`shipping_address` objects were removed."
           }
         },
         {
@@ -1089,7 +1100,7 @@
               ],
               "query": []
             },
-            "description": "AUTH\n\nEach row includes the order's own `currency`."
+            "description": "AUTH\n\nTakes NO parameters -- no filter, search, paging or limit.\n\nOrdered by `creation` DESC (newest first). Render as received; do not sort client-side. `transaction_date` cannot reproduce this order for same-day orders.\n\nEach row carries the order's own `currency`."
           }
         }
       ]

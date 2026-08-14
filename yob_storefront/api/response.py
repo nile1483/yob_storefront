@@ -61,6 +61,14 @@ CONTACT_NOT_FOUND = "contact_not_found"
 CONTACT_INVALID = "contact_invalid"
 CONTACT_REQUIRED = "contact_required"
 ADDRESS_NOT_FOUND = "address_not_found"
+# Frappe refused the delete because the record is still linked -- to a Cart, a
+# historical Sales Order, or the Customer's own default. That is link integrity
+# working, not a fault: deleting would strand the referring document. The
+# storefront answers 409 with a code the client can act on, and deliberately
+# does NOT name the referring documents (Frappe's own message embeds a Desk
+# anchor, which never reaches a storefront caller).
+ADDRESS_IN_USE = "address_in_use"
+CONTACT_IN_USE = "contact_in_use"
 BILLING_ADDRESS_INVALID = "billing_address_invalid"
 BILLING_ADDRESS_REQUIRED = "billing_address_required"
 SHIPPING_ADDRESS_INVALID = "shipping_address_invalid"

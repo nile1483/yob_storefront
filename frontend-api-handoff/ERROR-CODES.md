@@ -82,7 +82,20 @@ All from `apply_coupon` / `remove_coupon`; all `validation`.
 | `billing_address_invalid` | `set_cart_billing_address` | Address does not belong to this customer | access |
 | `shipping_address_invalid` | `set_cart_shipping_address` | Address does not belong to this customer | access |
 | `shipping_not_applicable` | `set_cart_shipping_address` | cart is not shippable — re-read `is_shippable` | validation |
+| `address_in_use` | `delete_address` | **409** — still referenced by a Cart, a historical Sales Order, or the Customer default | conflict |
+| `contact_in_use` | `delete_contact` | **409** — still referenced by a Cart or a historical Sales Order | conflict |
+| `validation_failed` | `add_/update_address`, `add_/update_contact` | **422** — a required field was cleared, or a value was rejected by ERPNext / India Compliance. Carries `field` where the failing field can be identified | validation |
 | `customer_not_found` | payment/checkout | the customer behind the link no longer exists | not_found |
+
+> **`*_in_use` is not a failure to retry, and not the same as 404.** The record
+> still exists and is still valid; only the delete was refused. Leave it in the
+> list and tell the user it is in use. Nothing is detached automatically — the
+> selection has to change first.
+>
+> The response carries **only** the code and a plain sentence. It does not name
+> the referring document: Frappe's own message for this case embeds an absolute
+> Desk URL and the referring docname, and that is stripped before the storefront
+> ever sees it. There is nothing in the body to parse.
 
 ## Checkout preconditions
 
@@ -152,6 +165,14 @@ All from `verify_payment`.
 | Code | Endpoints | Meaning | Category |
 |---|---|---|---|
 | `order_not_found` | `get_order_details` | unknown or not this customer's order | not_found |
+| `validation_failed` | `get_order_details` | `order_id` was not sent (`field: "order_id"`, **422**) | validation |
+
+`get_orders` takes no parameters and has no endpoint-specific error code.
+
+> **`order_not_found` is deliberately ambiguous.** Another customer's order and
+> a non-existent order return the identical 404, so the response cannot be used
+> to probe for orders that are not yours. Do not present it as "access denied" —
+> "order not found" is the correct user-facing message for both.
 
 ## Platform
 

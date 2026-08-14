@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "PARTIAL UPDATE. Only `name` and the fields you are actually editing.",
+    "The stored address here also has address_line2, phone, email_id and both",
+    "default flags set -- none of them are sent, and none of them change.",
+    "",
+    "Do NOT pad this payload with empty strings to 'protect' those fields.",
+    "An explicit \"\" is a deliberate CLEAR, so padding would destroy exactly",
+    "the data that padding used to be a workaround for."
+  ],
+  "name": "Example Billing-Billing",
+  "address_line1": "2 Example House, Example Road"
+}

@@ -1,0 +1,11 @@
+{
+  "message": {
+    "errors": [
+      {
+        "code": "validation_failed",
+        "detail": "Order ID is required.",
+        "field": "order_id"
+      }
+    ]
+  }
+}

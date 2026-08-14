@@ -1,0 +1,5 @@
+{
+  "_comment": "Partial, same semantics as update_address. first_name/last_name/email/phone are untouched and preserved.",
+  "name": "Example Contact-Example Buyer Ltd",
+  "designation": "Manager"
+}
