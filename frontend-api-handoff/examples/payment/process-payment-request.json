@@ -1,0 +1,4 @@
+{
+  "token": "{{payment_token}}",
+  "payment_method": "Razorpay"
+}

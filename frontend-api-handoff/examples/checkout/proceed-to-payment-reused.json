@@ -1,0 +1,10 @@
+{
+  "message": {
+    "data": {
+      "payment_request": "ACC-PRQ-2026-00001",
+      "payment_url": "/payment/test_payment_token_example_only",
+      "token": "test_payment_token_example_only"
+    },
+    "notice": "Proceed to payment"
+  }
+}

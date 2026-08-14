@@ -1,0 +1,38 @@
+{
+  "message": {
+    "data": [
+      {
+        "address_line1": "1 Example Industrial Road",
+        "address_line2": null,
+        "address_title": "Example Shipping",
+        "address_type": "Shipping",
+        "city": "Exampleton",
+        "country": "India",
+        "display": "1 Example Industrial Road<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\n",
+        "is_primary_address": 0,
+        "is_shipping_address": 0,
+        "name": "Example Shipping-Shipping",
+        "pincode": "000000",
+        "state": "Gujarat"
+      },
+      {
+        "address_line1": "1 Example Industrial Road",
+        "address_line2": null,
+        "address_title": "Example Billing",
+        "address_type": "Billing",
+        "city": "Exampleton",
+        "country": "India",
+        "display": "1 Example Industrial Road<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\nGSTIN: 24AAAAA0000A1Z5<br>",
+        "is_primary_address": 0,
+        "is_shipping_address": 0,
+        "name": "Example Billing-Billing",
+        "pincode": "000000",
+        "state": "Gujarat"
+      }
+    ],
+    "meta": {
+      "count": 2
+    },
+    "notice": "Addresses loaded"
+  }
+}

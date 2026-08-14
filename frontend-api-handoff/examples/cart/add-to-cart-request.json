@@ -1,0 +1,5 @@
+{
+  "_comment": "qty is a DELTA. If the line already holds 2, this makes it 5 (2+3).",
+  "item_code": "EXAMPLE-ITEM-001",
+  "qty": 3
+}

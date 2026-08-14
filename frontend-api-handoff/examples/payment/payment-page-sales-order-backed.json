@@ -1,0 +1,47 @@
+{
+  "message": {
+    "data": {
+      "amount": 135.0,
+      "billing_address": "Example Billing-Billing",
+      "company": "Example Trading Co",
+      "contact_person": "Example Contact-Example Buyer Ltd",
+      "currency": "INR",
+      "customer": "Example Buyer Ltd",
+      "docstatus": 0,
+      "items": [
+        {
+          "amount": 135.0,
+          "item_code": "YOB-BOLT-M10",
+          "item_name": "Hex Bolt M10 x 50mm",
+          "quantity": 12.0,
+          "rate": 11.25,
+          "uom": "Nos"
+        }
+      ],
+      "order_status": "Draft",
+      "payment_methods": [
+        {
+          "description": "Pay Later demo payment method.",
+          "display_order": 1,
+          "icon": null,
+          "method_code": "paylater",
+          "name": "Pay Later",
+          "payment_type": "Offline"
+        },
+        {
+          "description": "Razorpay demo payment method.",
+          "display_order": 2,
+          "icon": null,
+          "method_code": "razorpay",
+          "name": "Razorpay",
+          "payment_type": "Online"
+        }
+      ],
+      "payment_request": "ACC-PRQ-2026-00001",
+      "shipping_address": "Example Shipping-Shipping",
+      "source_doctype": "Sales Order",
+      "source_name": "SAL-ORD-2026-00001"
+    },
+    "notice": "Checkout data retrieved successfully"
+  }
+}

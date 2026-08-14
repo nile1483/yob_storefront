@@ -1,0 +1,11 @@
+{
+  "message": {
+    "errors": [
+      {
+        "code": "checkout_token_expired",
+        "detail": "This payment link has expired.",
+        "field": "token"
+      }
+    ]
+  }
+}

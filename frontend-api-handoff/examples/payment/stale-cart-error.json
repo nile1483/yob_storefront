@@ -1,0 +1,10 @@
+{
+  "message": {
+    "errors": [
+      {
+        "code": "payment_request_stale",
+        "detail": "Your cart has changed since this payment was started. Please return to the cart and continue again."
+      }
+    ]
+  }
+}

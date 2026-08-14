@@ -1,0 +1,11 @@
+{
+  "message": {
+    "errors": [
+      {
+        "code": "quantity_invalid",
+        "detail": "Quantity must be greater than zero.",
+        "field": "qty"
+      }
+    ]
+  }
+}

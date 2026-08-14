@@ -1,0 +1,13 @@
+{
+  "message": {
+    "data": {
+      "amount": 13500,
+      "currency": "INR",
+      "order_id": "order_EXAMPLE0001",
+      "payment_method": "razorpay",
+      "payment_request": "ACC-PRQ-2026-00001",
+      "razorpay_key": "rzp_test_EXAMPLE",
+      "sales_order": "SAL-ORD-2026-00001"
+    }
+  }
+}

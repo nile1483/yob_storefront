@@ -1,0 +1,10 @@
+{
+  "message": {
+    "data": {
+      "payment_id": "pay_EXAMPLE0001",
+      "payment_request": "ACC-PRQ-2026-00001",
+      "sales_order": "SAL-ORD-2026-00001"
+    },
+    "notice": "Payment verified and order created successfully."
+  }
+}

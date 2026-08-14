@@ -1,0 +1,11 @@
+{
+  "message": {
+    "errors": [
+      {
+        "code": "checkout_token_invalid",
+        "detail": "This checkout link is not valid.",
+        "field": "token"
+      }
+    ]
+  }
+}

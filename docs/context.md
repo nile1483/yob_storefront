@@ -36,6 +36,65 @@ server-rendered redirect flow; YOB has its own Angular SPA, which receives a
 JSON payload and opens the provider's browser SDK itself. Payments remains the
 server-side configuration foundation; the buyer's experience is YOB's.
 
+### VERIFIED: real Razorpay Test Mode lifecycle
+
+Confirmed by manual browser payments on a migrated dev site, then audited
+read-only. Not inferred from tests.
+
+**Happy path — both entry routes work:** authenticated Checkout → redirect to
+`/payment/<token>`, and the same link opened directly in an incognito window
+with **no storefront session**. Razorpay Test Mode payment completed in both.
+
+**Settled record shape** (two independent transactions, ₹8910 and ₹1350):
+
+```
+Payment Request  status=Paid, mode_of_payment=Razorpay
+                 provider order + provider payment stored
+                 source fingerprint retained, checkout token REVOKED
+Sales Order      Draft (docstatus=0), amount and currency equal to the PR
+Cart             Ordered, pointing at that Sales Order
+```
+
+**Abandoned record shape** — legitimate, not a defect. A buyer who opens
+Checkout and leaves:
+
+```
+Payment Request  Draft, provider order present, NO provider payment
+                 claim set, fingerprint retained, token still LIVE
+Sales Order      Draft, committed, amount matches
+```
+
+The live token is correct: the obligation is unpaid and the payer must be able
+to return. Reopening the link neither duplicates the Sales Order nor the
+provider order.
+
+**Uniqueness, verified by query against real data:** no Sales Order serves more
+than one Payment Request; no provider order is shared by more than one Payment
+Request. `Payment Entry` count is 0 — no payment accounting exists, by design.
+
+**Signature verification.** Settlement is reachable only past the Razorpay HMAC
+check, so `status=Paid` with a real provider payment id is itself proof the
+production HMAC path executed with a genuine Razorpay signature.
+
+### VERIFIED: security boundaries
+
+Each proven by an endpoint-level automated test, not by inspection:
+
+| Boundary | Result |
+| --- | --- |
+| Invalid signature | rejected, no settlement, no state change |
+| Tampered signed value (order id swapped, signature kept) | rejected |
+| Payment from another transaction | rejected, fails closed |
+| Duplicate/replay of a valid success | idempotent; one Sales Order, one settlement |
+| Already-paid request | token revoked; no second charge can be started |
+| Revoked token | denies both the payment page and payment initiation |
+| Ineligible payment method | rejected server-side, no provider order |
+| Stale / amount / currency mismatch | rejected before any provider operation |
+| Guest privilege | no ERPNext access before or after paying |
+
+Razorpay signs `order_id|payment_id`; verification happens server-side in
+`payment_service.verify_razorpay_signature` before any state transition.
+
 ### Public payment authorization
 
 `/payment/<token>` is **public**. A payer may arrive from authenticated

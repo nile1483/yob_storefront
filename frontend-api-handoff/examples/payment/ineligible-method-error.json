@@ -1,0 +1,11 @@
+{
+  "message": {
+    "errors": [
+      {
+        "code": "payment_method_unsupported",
+        "detail": "This payment method is not available for this order.",
+        "field": "payment_method"
+      }
+    ]
+  }
+}

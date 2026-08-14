@@ -1,0 +1,2573 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "YOB Storefront & Auth API \u2014 frontend contract",
+    "version": "3.0.0",
+    "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
+  },
+  "servers": [
+    {
+      "url": "http://storefront.local:8080"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "sid"
+      }
+    },
+    "schemas": {
+      "Success": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "description": "object, array or null"
+              },
+              "notice": {
+                "type": "string"
+              },
+              "meta": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "object",
+            "required": [
+              "errors"
+            ],
+            "properties": {
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "detail"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "description": "stable machine value"
+                    },
+                    "detail": {
+                      "type": "string",
+                      "description": "human text; do not parse"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "description": "structured extras, e.g. retryable / sales_order"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/method/yob_auth.api.auth.get_session_context": {
+      "get": {
+        "summary": "get_session_context",
+        "operationId": "yob_auth.api.auth.get_session_context",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": [
+          {
+            "name": "application",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/method/yob_auth.api.auth.login_with_otp": {
+      "post": {
+        "summary": "login_with_otp",
+        "operationId": "yob_auth.api.auth.login_with_otp",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**PUBLIC AUTH**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "challenge_id": {
+                    "description": "default: None"
+                  },
+                  "otp": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/yob_auth.api.auth.login_with_password": {
+      "post": {
+        "summary": "login_with_password",
+        "operationId": "yob_auth.api.auth.login_with_password",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**PUBLIC AUTH**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "application": {
+                    "description": "default: None"
+                  },
+                  "username": {
+                    "description": "default: None"
+                  },
+                  "password": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/yob_auth.api.auth.logout": {
+      "post": {
+        "summary": "logout",
+        "operationId": "yob_auth.api.auth.logout",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_auth.api.auth.request_otp": {
+      "post": {
+        "summary": "request_otp",
+        "operationId": "yob_auth.api.auth.request_otp",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**PUBLIC AUTH**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "application": {
+                    "description": "default: None"
+                  },
+                  "identifier": {
+                    "description": "default: None"
+                  },
+                  "method": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/yob_storefront.api.address.add_address": {
+      "post": {
+        "summary": "add_address",
+        "operationId": "yob_storefront.api.address.add_address",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.address.add_contact": {
+      "post": {
+        "summary": "Create a Contact master linked to the authenticated Customer.",
+        "operationId": "yob_storefront.api.address.add_contact",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.address.delete_address": {
+      "post": {
+        "summary": "delete_address",
+        "operationId": "yob_storefront.api.address.delete_address",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "name": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.address.delete_contact": {
+      "post": {
+        "summary": "delete_contact",
+        "operationId": "yob_storefront.api.address.delete_contact",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "name": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.address.get_addresses": {
+      "get": {
+        "summary": "get_addresses",
+        "operationId": "yob_storefront.api.address.get_addresses",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": [
+                      {
+                        "address_line1": "1 Example Industrial Road",
+                        "address_line2": null,
+                        "address_title": "Example Shipping",
+                        "address_type": "Shipping",
+                        "city": "Exampleton",
+                        "country": "India",
+                        "display": "1 Example Industrial Road<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\n",
+                        "is_primary_address": 0,
+                        "is_shipping_address": 0,
+                        "name": "Example Shipping-Shipping",
+                        "pincode": "000000",
+                        "state": "Gujarat"
+                      },
+                      {
+                        "address_line1": "1 Example Industrial Road",
+                        "address_line2": null,
+                        "address_title": "Example Billing",
+                        "address_type": "Billing",
+                        "city": "Exampleton",
+                        "country": "India",
+                        "display": "1 Example Industrial Road<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\nGSTIN: 24AAAAA0000A1Z5<br>",
+                        "is_primary_address": 0,
+                        "is_shipping_address": 0,
+                        "name": "Example Billing-Billing",
+                        "pincode": "000000",
+                        "state": "Gujarat"
+                      }
+                    ],
+                    "meta": {
+                      "count": 2
+                    },
+                    "notice": "Addresses loaded"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": []
+      }
+    },
+    "/api/method/yob_storefront.api.address.get_contact_for_customer": {
+      "get": {
+        "summary": "Returns the contact linked to the given customer.",
+        "operationId": "yob_storefront.api.address.get_contact_for_customer",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**INTERNAL ONLY**\n\nInternal Desk tooling. NOT part of the browser contract.",
+        "parameters": [
+          {
+            "name": "customer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.address.get_contacts": {
+      "get": {
+        "summary": "get_contacts",
+        "operationId": "yob_storefront.api.address.get_contacts",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": [
+                      {
+                        "company_name": null,
+                        "designation": null,
+                        "email": "buyer@example.com",
+                        "first_name": "Example Contact",
+                        "full_name": "Example Contact",
+                        "gender": null,
+                        "last_name": null,
+                        "name": "Example Contact",
+                        "phone": null,
+                        "salutation": null
+                      },
+                      {
+                        "company_name": null,
+                        "designation": null,
+                        "email": "buyer@example.com",
+                        "first_name": "Demo",
+                        "full_name": "Example Contact",
+                        "gender": null,
+                        "last_name": "Buyer",
+                        "name": "Example Contact-Example Buyer Ltd",
+                        "phone": "+91 99999 00000",
+                        "salutation": null
+                      }
+                    ],
+                    "meta": {
+                      "count": 2
+                    },
+                    "notice": "Contacts loaded"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": []
+      }
+    },
+    "/api/method/yob_storefront.api.address.update_address": {
+      "post": {
+        "summary": "update_address",
+        "operationId": "yob_storefront.api.address.update_address",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.address.update_contact": {
+      "post": {
+        "summary": "update_contact",
+        "operationId": "yob_storefront.api.address.update_contact",
+        "tags": [
+          "address"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cart.add_to_cart": {
+      "post": {
+        "summary": "add_to_cart",
+        "operationId": "yob_storefront.api.cart.add_to_cart",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "billing_address": "Example Billing-Billing",
+                      "checkout_by": null,
+                      "company": "Example Trading Co",
+                      "company_address": null,
+                      "contact_person": "Example Contact-Example Buyer Ltd",
+                      "coupon_code": null,
+                      "coupon_discount": 0.0,
+                      "currency": "INR",
+                      "customer": "Example Buyer Ltd",
+                      "grand_total": 270.0,
+                      "is_shippable": 1,
+                      "items": [
+                        {
+                          "amount": 270.0,
+                          "base_price": 12.5,
+                          "conversion_factor": 0.0,
+                          "discount_amount": 1.25,
+                          "discount_percentage": 10.0,
+                          "image": null,
+                          "item_code": "YOB-BOLT-M10",
+                          "item_expiry_date": null,
+                          "item_name": null,
+                          "item_slug": null,
+                          "line_discount": 30.0,
+                          "parent": "CART-2026-01-0001",
+                          "parentfield": "items",
+                          "parenttype": "Cart",
+                          "pricing_rule_apply_on": "Item Code",
+                          "pricing_rule_label": "YOB Demo Bulk Discount",
+                          "pricing_rules": "[\"PRLE-0001\"]",
+                          "quantity": 24.0,
+                          "rate": 11.25,
+                          "stock_uom": "Nos",
+                          "tax_amount": 0.0,
+                          "total_amount": 270.0,
+                          "uom": "Nos"
+                        }
+                      ],
+                      "net_total": 270.0,
+                      "order_type": "Shopping Cart",
+                      "ordered_on": null,
+                      "sales_order": null,
+                      "selling_price_list": "Standard Selling",
+                      "shipping_address": "Example Shipping-Shipping",
+                      "status": "Draft",
+                      "tax_total": 0.0,
+                      "total_discount": 30.0,
+                      "total_quantity": 24,
+                      "user": "buyer@example.com"
+                    },
+                    "notice": "Item added"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": {
+                    "errors": [
+                      {
+                        "code": "quantity_invalid",
+                        "detail": "Quantity must be greater than zero.",
+                        "field": "qty"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**\n\n**qty is a DELTA added to any existing line for this item_code -- it does NOT replace it. Line qty 2 + add qty 5 = 7, on ONE row. A quantity stepper must send the difference. NOT idempotent: a retry or double-submit adds twice. There is no absolute set-quantity endpoint.**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "item_code": {
+                    "type": "string",
+                    "description": "Item code to add."
+                  },
+                  "qty": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "qty is a DELTA added to any existing line for this item_code -- it does NOT replace it. Line qty 2 + add qty 5 = 7, on ONE row. A quantity stepper must send the difference. NOT idempotent: a retry or double-submit adds twice. There is no absolute set-quantity endpoint. Fractional values accepted."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cart.apply_coupon": {
+      "post": {
+        "summary": "apply_coupon",
+        "operationId": "yob_storefront.api.cart.apply_coupon",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "code": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cart.clear_cart": {
+      "post": {
+        "summary": "clear_cart",
+        "operationId": "yob_storefront.api.cart.clear_cart",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cart.get_cart": {
+      "get": {
+        "summary": "get_cart",
+        "operationId": "yob_storefront.api.cart.get_cart",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "billing_address": {
+                        "city": "Exampleton",
+                        "country": "India",
+                        "display": "1 Example Industrial Road<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\nGSTIN: 24AAAAA0000A1Z5<br>",
+                        "name": "Example Billing-Billing",
+                        "pincode": "000000",
+                        "state": "Gujarat"
+                      },
+                      "cart": {
+                        "billing_address": "Example Billing-Billing",
+                        "checkout_by": "buyer@example.com",
+                        "company": "Example Trading Co",
+                        "company_address": null,
+                        "contact_person": "Example Contact-Example Buyer Ltd",
+                        "coupon_code": null,
+                        "coupon_discount": 0.0,
+                        "currency": "INR",
+                        "customer": "Example Buyer Ltd",
+                        "grand_total": 270.0,
+                        "is_shippable": 1,
+                        "items": [
+                          {
+                            "amount": 270.0,
+                            "base_price": 12.5,
+                            "conversion_factor": 0.0,
+                            "discount_amount": 1.25,
+                            "discount_percentage": 10.0,
+                            "image": null,
+                            "item_code": "YOB-BOLT-M10",
+                            "item_expiry_date": null,
+                            "item_name": null,
+                            "item_slug": null,
+                            "line_discount": 30.0,
+                            "parent": "CART-2026-01-0001",
+                            "parentfield": "items",
+                            "parenttype": "Cart",
+                            "pricing_rule_apply_on": "Item Code",
+                            "pricing_rule_label": "YOB Demo Bulk Discount",
+                            "pricing_rules": "[\"PRLE-0001\"]",
+                            "quantity": 24.0,
+                            "rate": 11.25,
+                            "stock_uom": "Nos",
+                            "tax_amount": 0.0,
+                            "total_amount": 270.0,
+                            "uom": "Nos"
+                          }
+                        ],
+                        "name": "CART-2026-01-0001",
+                        "net_total": 270.0,
+                        "order_type": "Shopping Cart",
+                        "ordered_on": "2026-08-13 22:55:41.661405",
+                        "sales_order": null,
+                        "selling_price_list": "Standard Selling",
+                        "shipping_address": "Example Shipping-Shipping",
+                        "status": "Draft",
+                        "tax_total": 0.0,
+                        "total_discount": 30.0,
+                        "total_quantity": 24,
+                        "user": "buyer@example.com"
+                      },
+                      "cart_updated": false,
+                      "contact": {
+                        "email": "buyer@example.com",
+                        "full_name": "Example Contact",
+                        "name": "Example Contact-Example Buyer Ltd",
+                        "phone": "+91 99999 00000"
+                      },
+                      "price_updated_items": [],
+                      "removed_items": [],
+                      "shipping_address": {
+                        "city": "Exampleton",
+                        "country": "India",
+                        "display": "1 Example Industrial Road<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\n",
+                        "name": "Example Shipping-Shipping",
+                        "pincode": "000000",
+                        "state": "Gujarat"
+                      }
+                    },
+                    "notice": "Cart loaded"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": []
+      }
+    },
+    "/api/method/yob_storefront.api.cart.remove_coupon": {
+      "post": {
+        "summary": "remove_coupon",
+        "operationId": "yob_storefront.api.cart.remove_coupon",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cart.remove_from_cart": {
+      "post": {
+        "summary": "remove_from_cart",
+        "operationId": "yob_storefront.api.cart.remove_from_cart",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "item_code": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cart.set_cart_billing_address": {
+      "post": {
+        "summary": "set_cart_billing_address",
+        "operationId": "yob_storefront.api.cart.set_cart_billing_address",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "billing_address": "Example Billing-Billing",
+                      "shipping_address": "Example Shipping-Shipping"
+                    },
+                    "notice": "Billing address updated"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "billing_address": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cart.set_cart_contact": {
+      "post": {
+        "summary": "set_cart_contact",
+        "operationId": "yob_storefront.api.cart.set_cart_contact",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "contact_person": "Example Contact-Example Buyer Ltd"
+                    },
+                    "notice": "Contact updated"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "contact_person": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cart.set_cart_shipping_address": {
+      "post": {
+        "summary": "set_cart_shipping_address",
+        "operationId": "yob_storefront.api.cart.set_cart_shipping_address",
+        "tags": [
+          "cart"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "shipping_address": "Example Shipping-Shipping"
+                    },
+                    "notice": "Shipping address updated"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "shipping_address": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.catalog.get_categories": {
+      "get": {
+        "summary": "get_categories",
+        "operationId": "yob_storefront.api.catalog.get_categories",
+        "tags": [
+          "catalog"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": [
+                      {
+                        "banner": null,
+                        "category_name": "Industrial Supplies",
+                        "display_order": 1,
+                        "meta_description": null,
+                        "meta_title": null,
+                        "name": "Industrial Supplies",
+                        "parent_category": null,
+                        "slug": "industrial-supplies",
+                        "thumbnail": null
+                      }
+                    ],
+                    "meta": {
+                      "count": 1
+                    },
+                    "notice": "Categories loaded"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": [
+          {
+            "name": "parent_slug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.catalog.get_category": {
+      "get": {
+        "summary": "get_category",
+        "operationId": "yob_storefront.api.catalog.get_category",
+        "tags": [
+          "catalog"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "qty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.catalog.get_item": {
+      "get": {
+        "summary": "get_item",
+        "operationId": "yob_storefront.api.catalog.get_item",
+        "tags": [
+          "catalog"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "qty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.checkout.proceed_to_payment": {
+      "post": {
+        "summary": "Issue (or re-issue) the checkout credential for the buyer's open Cart.",
+        "operationId": "yob_storefront.api.checkout.proceed_to_payment",
+        "tags": [
+          "checkout"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Existing open obligation REUSED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "payment_request": "ACC-PRQ-2026-00001",
+                      "payment_url": "/payment/test_payment_token_example_only",
+                      "token": "test_payment_token_example_only"
+                    },
+                    "notice": "Proceed to payment"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Payment Request CREATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "payment_request": "ACC-PRQ-2026-00001",
+                      "payment_url": "/payment/test_payment_token_example_only",
+                      "token": "test_payment_token_example_only"
+                    },
+                    "notice": "Proceed to payment"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Frappe-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for non-GET authenticated calls."
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.cms.get_config": {
+      "get": {
+        "summary": "get_config",
+        "operationId": "yob_storefront.api.cms.get_config",
+        "tags": [
+          "cms"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "allow_guest_purchase": 0,
+                      "allowed_payment_modes": [],
+                      "company": "Example Trading Co",
+                      "default_currency": "INR",
+                      "default_price_list": "Standard Selling",
+                      "default_privacy_page": null,
+                      "default_terms_page": null,
+                      "default_warehouse": null,
+                      "store_domain": "storefront.example",
+                      "store_logo": null,
+                      "store_name": "Example Store"
+                    },
+                    "notice": "Store config loaded"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": []
+      }
+    },
+    "/api/method/yob_storefront.api.order.get_order_details": {
+      "get": {
+        "summary": "get_order_details",
+        "operationId": "yob_storefront.api.order.get_order_details",
+        "tags": [
+          "order"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "billing_address_display": "1 Example House, Example Road\nExampleton\nGujarat, State Code: 24\nPIN Code: 000000\nIndia\nGSTIN: 24AAAAA0000A1Z5",
+                      "billing_address_name": "YOB Demo Billing-Billing",
+                      "contact_email": null,
+                      "contact_mobile": null,
+                      "contact_person": null,
+                      "currency": "INR",
+                      "customer": "Example Buyer Ltd",
+                      "delivery_date": "2026-08-14",
+                      "discount": -175.0,
+                      "grand_total": 200.0,
+                      "items": [
+                        {
+                          "amount": 200.0,
+                          "description": "Hex Bolt M10 x 50mm -- demo catalogue item.",
+                          "discount_amount": -175.0,
+                          "discount_percentage": 0.0,
+                          "image": "",
+                          "item_code": "EXAMPLE-ITEM-001",
+                          "item_name": "Hex Bolt M10 x 50mm",
+                          "net_amount": 200.0,
+                          "price_list_rate": 12.5,
+                          "qty": 2.0,
+                          "rate": 100.0,
+                          "uom": "Nos"
+                        }
+                      ],
+                      "name": "SAL-ORD-2026-00001",
+                      "net_total": 200.0,
+                      "original_total": 25.0,
+                      "payment_logs": [],
+                      "payment_terms_template": null,
+                      "rounded_total": 200.0,
+                      "shipping_address_display": "1 Example House, Example Road\nExampleton\nGujarat, State Code: 24\nPIN Code: 000000\nIndia",
+                      "shipping_address_name": "YOB Demo Shipping-Shipping",
+                      "status": "Draft",
+                      "subtotal": 200.0,
+                      "tax": 0.0,
+                      "taxes": [],
+                      "tc_name": null,
+                      "terms": null,
+                      "transaction_date": "2026-08-14"
+                    },
+                    "notice": "Order fetched successfully"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**\n\n**Addresses are historical snapshots.** `billing_address_display` and `shipping_address_display` are `string | null` PLAIN TEXT (real newlines, never HTML) taken from the order's immutable order-time snapshot -- editing the Address master does not change a past order. `billing_address_name` / `shipping_address_name` are identifiers only and point at the CURRENT master. The former `billing_address` / `shipping_address` OBJECTS were removed: they read the master live and made order history mutable.",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.order.get_orders": {
+      "get": {
+        "summary": "get_orders",
+        "operationId": "yob_storefront.api.order.get_orders",
+        "tags": [
+          "order"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": [
+                      {
+                        "currency": "INR",
+                        "delivery_date": "2026-08-14",
+                        "grand_total": 200.0,
+                        "name": "SAL-ORD-2026-00001",
+                        "status": "Draft",
+                        "transaction_date": "2026-08-14"
+                      },
+                      {
+                        "currency": "INR",
+                        "delivery_date": "2026-08-16",
+                        "grand_total": 723.0,
+                        "name": "SAL-ORD-2026-00001",
+                        "status": "To Deliver and Bill",
+                        "transaction_date": "2026-08-09"
+                      }
+                    ],
+                    "meta": {
+                      "count": 2
+                    },
+                    "notice": "Orders fetched successfully"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**\n\nEach row carries the Sales Order's OWN stored `currency`. Never infer order-list currency from environment configuration.",
+        "parameters": []
+      }
+    },
+    "/api/method/yob_storefront.api.payment.get_checkout_data": {
+      "get": {
+        "summary": "Render the guest payment page for one immutable obligation.",
+        "operationId": "yob_storefront.api.payment.get_checkout_data",
+        "tags": [
+          "payment"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "amount": 135.0,
+                      "billing_address": {
+                        "city": "Exampleton",
+                        "country": "India",
+                        "display": "1 Example Industrial Road<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\nGSTIN: 24AAAAA0000A1Z5<br>",
+                        "name": "Example Billing-Billing",
+                        "pincode": "000000",
+                        "state": "Gujarat"
+                      },
+                      "cart": {
+                        "billing_address": "Example Billing-Billing",
+                        "checkout_by": null,
+                        "company": "Example Trading Co",
+                        "company_address": null,
+                        "contact_person": "Example Contact-Example Buyer Ltd",
+                        "coupon_code": null,
+                        "coupon_discount": 0.0,
+                        "currency": "INR",
+                        "customer": "Example Buyer Ltd",
+                        "grand_total": 135.0,
+                        "is_shippable": 1,
+                        "items": [
+                          {
+                            "amount": 135.0,
+                            "base_price": 12.5,
+                            "conversion_factor": 0.0,
+                            "discount_amount": 1.25,
+                            "discount_percentage": 10.0,
+                            "image": null,
+                            "item_code": "YOB-BOLT-M10",
+                            "item_expiry_date": null,
+                            "item_name": null,
+                            "item_slug": null,
+                            "line_discount": 15.0,
+                            "parent": "CART-2026-01-0001",
+                            "parentfield": "items",
+                            "parenttype": "Cart",
+                            "pricing_rule_apply_on": "Item Code",
+                            "pricing_rule_label": "YOB Demo Bulk Discount",
+                            "pricing_rules": "[\"PRLE-0001\"]",
+                            "quantity": 12.0,
+                            "rate": 11.25,
+                            "stock_uom": "Nos",
+                            "tax_amount": 0.0,
+                            "total_amount": 135.0,
+                            "uom": "Nos"
+                          }
+                        ],
+                        "name": "CART-2026-01-0001",
+                        "net_total": 135.0,
+                        "order_type": "Shopping Cart",
+                        "ordered_on": null,
+                        "sales_order": null,
+                        "selling_price_list": "Standard Selling",
+                        "shipping_address": "Example Shipping-Shipping",
+                        "status": "Draft",
+                        "tax_total": 0.0,
+                        "total_discount": 15.0,
+                        "total_quantity": 12,
+                        "user": "buyer@example.com"
+                      },
+                      "cart_updated": false,
+                      "contact": {
+                        "email": "buyer@example.com",
+                        "full_name": "Example Contact",
+                        "name": "Example Contact-Example Buyer Ltd",
+                        "phone": "+91 99999 00000"
+                      },
+                      "currency": "INR",
+                      "payment_methods": [
+                        {
+                          "description": "Pay Later demo payment method.",
+                          "display_order": 1,
+                          "icon": null,
+                          "method_code": "paylater",
+                          "name": "Pay Later",
+                          "payment_type": "Offline"
+                        },
+                        {
+                          "description": "Razorpay demo payment method.",
+                          "display_order": 2,
+                          "icon": null,
+                          "method_code": "razorpay",
+                          "name": "Razorpay",
+                          "payment_type": "Online"
+                        }
+                      ],
+                      "payment_request": "ACC-PRQ-2026-00001",
+                      "price_updated_items": [],
+                      "removed_items": [],
+                      "shipping_address": {
+                        "city": "Exampleton",
+                        "country": "India",
+                        "display": "1 Example Industrial Road<br>Exampleton<br>\nGujarat, State Code: 24<br>PIN Code: 000000<br>India<br>\n",
+                        "name": "Example Shipping-Shipping",
+                        "pincode": "000000",
+                        "state": "Gujarat"
+                      },
+                      "source_doctype": "Cart",
+                      "source_name": "CART-2026-01-0001"
+                    },
+                    "notice": "Checkout data retrieved successfully"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": {
+                    "errors": [
+                      {
+                        "code": "payment_request_stale",
+                        "detail": "Your cart has changed since this payment was started. Please return to the cart and continue again."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "**PUBLIC TOKEN**",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/method/yob_storefront.api.payment.process_payment": {
+      "post": {
+        "summary": "Commit the obligation locally, then dispatch to the chosen method.",
+        "operationId": "yob_storefront.api.payment.process_payment",
+        "tags": [
+          "payment"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "amount": 13500,
+                      "currency": "INR",
+                      "order_id": "order_EXAMPLE0001",
+                      "payment_method": "razorpay",
+                      "payment_request": "ACC-PRQ-2026-00001",
+                      "razorpay_key": "rzp_test_EXAMPLE",
+                      "sales_order": "SAL-ORD-2026-00001"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": {
+                    "errors": [
+                      {
+                        "code": "payment_method_unsupported",
+                        "detail": "This payment method is not available for this order.",
+                        "field": "payment_method"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "**PUBLIC TOKEN**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "token": {
+                    "description": "default: None"
+                  },
+                  "payment_method": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/yob_storefront.api.payment.verify_payment": {
+      "post": {
+        "summary": "verify_payment",
+        "operationId": "yob_storefront.api.payment.verify_payment",
+        "tags": [
+          "payment"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": {
+                      "payment_id": "pay_EXAMPLE0001",
+                      "payment_request": "ACC-PRQ-2026-00001",
+                      "sales_order": "SAL-ORD-2026-00001"
+                    },
+                    "notice": "Payment verified and order created successfully."
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": {
+                    "errors": [
+                      {
+                        "code": "payment_signature_invalid",
+                        "detail": "Invalid payment signature."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "**PUBLIC PROVIDER CALLBACK**",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "razorpay_order_id": {
+                    "description": "default: None"
+                  },
+                  "razorpay_payment_id": {
+                    "description": "default: None"
+                  },
+                  "razorpay_signature": {
+                    "description": "default: None"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/yob_storefront.api.payment_method.get_payment_methods": {
+      "get": {
+        "summary": "Payment methods available to the AUTHENTICATED customer.",
+        "operationId": "yob_storefront.api.payment_method.get_payment_methods",
+        "tags": [
+          "payment_method"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                },
+                "example": {
+                  "message": {
+                    "data": [
+                      {
+                        "description": "Pay Later demo payment method.",
+                        "display_order": 1,
+                        "icon": null,
+                        "method_code": "paylater",
+                        "name": "Pay Later",
+                        "payment_type": "Offline"
+                      },
+                      {
+                        "description": "Razorpay demo payment method.",
+                        "display_order": 2,
+                        "icon": null,
+                        "method_code": "razorpay",
+                        "name": "Razorpay",
+                        "payment_type": "Online"
+                      }
+                    ],
+                    "meta": {
+                      "count": 2
+                    },
+                    "notice": "Payment methods loaded"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "**AUTHENTICATED STOREFRONT**",
+        "parameters": [
+          {
+            "name": "customer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "company",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "order_amount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

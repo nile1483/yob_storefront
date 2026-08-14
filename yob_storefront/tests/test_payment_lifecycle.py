@@ -126,7 +126,25 @@ class LifecycleCase(unittest.TestCase):
         self.customer = frappe.get_doc("Customer", CUSTOMER)
 
     def tearDown(self):
-        frappe.db.rollback(save_point="phase1")
+        # A test that exercises a real error path reaches production
+        # `server_error()`, which calls `frappe.db.rollback()` -- and a full
+        # rollback DESTROYS this savepoint. Asking for it again then raises
+        # "SAVEPOINT phase1 does not exist" and every following test in the
+        # class fails during teardown rather than on its own merits.
+        #
+        # Falling back to a full rollback is not a weaker cleanup, it is a
+        # stronger one: `frappe.db.commit` is patched to a recorder for this
+        # whole hierarchy (see setUp), so NOTHING a test does is ever committed,
+        # and rolling the entire transaction back returns the database to its
+        # pre-test state either way.
+        #
+        # Production rollback is deliberately left alone -- suppressing it to
+        # keep tests tidy would hide the behaviour the tests exist to verify.
+        try:
+            frappe.db.rollback(save_point="phase1")
+        except Exception:
+            frappe.db.rollback()
+
         frappe.clear_cache()
 
     # ----------------------------------------------------------- helpers

@@ -1,0 +1,14 @@
+{
+  "message": {
+    "errors": [
+      {
+        "code": "payment_provider_error",
+        "detail": "We could not reach the payment provider. Your order is saved -- please try paying again.",
+        "details": {
+          "retryable": true,
+          "sales_order": "SAL-ORD-2026-00001"
+        }
+      }
+    ]
+  }
+}

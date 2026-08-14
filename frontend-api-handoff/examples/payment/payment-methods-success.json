@@ -1,0 +1,26 @@
+{
+  "message": {
+    "data": [
+      {
+        "description": "Pay Later demo payment method.",
+        "display_order": 1,
+        "icon": null,
+        "method_code": "paylater",
+        "name": "Pay Later",
+        "payment_type": "Offline"
+      },
+      {
+        "description": "Razorpay demo payment method.",
+        "display_order": 2,
+        "icon": null,
+        "method_code": "razorpay",
+        "name": "Razorpay",
+        "payment_type": "Online"
+      }
+    ],
+    "meta": {
+      "count": 2
+    },
+    "notice": "Payment methods loaded"
+  }
+}

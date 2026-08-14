@@ -10,6 +10,88 @@ from erpnext.accounts.doctype.pricing_rule.utils import (
 
 
 # =========================================================
+# HISTORICAL ADDRESS PROJECTION
+# =========================================================
+
+def order_address_display(snapshot: str | None, link: str | None) -> str | None:
+    """Plain-text address for an order, from its IMMUTABLE order-time snapshot.
+
+    THE BUG THIS EXISTS TO PREVENT. Order detail used to read the linked Address
+    master live, so editing an address rewrote the address on every past order.
+    An invoice-grade record must show what was true when the order was placed,
+    not what the master says today.
+
+    ERPNext already stores that snapshot at Sales Order creation:
+
+        billing   Sales Order.address_display
+        shipping  Sales Order.shipping_address     (the LINK lives in
+                  `shipping_address_name` -- ERPNext's naming is genuinely
+                  inverted here, so read the field, not the name)
+
+    When a snapshot exists it is used and the Address master is NEVER read.
+
+    ``link`` is only a LEGACY fallback for a Sales Order created before the
+    snapshot was populated. Best-effort, and it returns the same ``str | None``
+    type so the field never changes shape. A missing linked Address returns
+    None rather than failing the whole order detail.
+
+    Returns plain text with real newlines -- never HTML. The frontend renders it
+    as text and must not need ``[innerHTML]``.
+    """
+
+    text = _plain_text_address(snapshot)
+
+    if text:
+        return text
+
+    if not link:
+        return None
+
+    # LEGACY path only. Reaching here means the order has no stored snapshot.
+    try:
+        from frappe.contacts.doctype.address.address import get_address_display
+
+        return _plain_text_address(get_address_display(link))
+    except (frappe.DoesNotExistError, frappe.PermissionError):
+        # A deleted or unreadable legacy Address must not break the whole order
+        # detail -- the rest of the order is still valid and worth returning.
+        #
+        # Deliberately NOT a bare `except Exception`: those two are the real
+        # failure modes for a dangling link, and catching everything here would
+        # swallow genuine faults behind a silently blank address.
+        return None
+
+
+def _plain_text_address(value: str | None) -> str | None:
+    """Stored address display HTML -> plain text, line breaks preserved.
+
+    Uses Frappe's own ``html_to_plain_text``, which converts ``<br>`` to a
+    newline and strips script/style. No new dependency: it uses bs4, which
+    Frappe already ships.
+
+    ``frappe.utils.strip_html`` is deliberately NOT used -- it removes ``<br>``
+    along with every other tag and collapses a postal address onto one line.
+
+    One normalisation on top: the stored value contains ``<br>\\n`` in places,
+    which converts to two newlines and leaves blank lines mid-address. Those
+    blanks are an artefact of the stored markup, not part of the address, so
+    runs of blank lines are collapsed.
+    """
+
+    if not value:
+        return None
+
+    from frappe.core.utils import html_to_plain_text
+
+    text = html_to_plain_text(value)
+
+    lines = [line.strip() for line in (text or "").splitlines()]
+    lines = [line for line in lines if line]
+
+    return "\n".join(lines) or None
+
+
+# =========================================================
 # CREATE SALES ORDER FROM CART
 # =========================================================
 

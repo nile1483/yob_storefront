@@ -1,0 +1,34 @@
+{
+  "message": {
+    "data": [
+      {
+        "company_name": null,
+        "designation": null,
+        "email": "buyer@example.com",
+        "first_name": "Example Contact",
+        "full_name": "Example Contact",
+        "gender": null,
+        "last_name": null,
+        "name": "Example Contact",
+        "phone": null,
+        "salutation": null
+      },
+      {
+        "company_name": null,
+        "designation": null,
+        "email": "buyer@example.com",
+        "first_name": "Demo",
+        "full_name": "Example Contact",
+        "gender": null,
+        "last_name": "Buyer",
+        "name": "Example Contact-Example Buyer Ltd",
+        "phone": "+91 99999 00000",
+        "salutation": null
+      }
+    ],
+    "meta": {
+      "count": 2
+    },
+    "notice": "Contacts loaded"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "message": {
+    "data": {
+      "amount": 135.0,
+      "currency": "INR",
+      "payment_method": "paylater",
+      "payment_request": "ACC-PRQ-2026-00001",
+      "payment_status": "Unpaid",
+      "sales_order": "SAL-ORD-2026-00001"
+    },
+    "notice": "Order created with Pay Later"
+  }
+}

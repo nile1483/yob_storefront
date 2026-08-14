@@ -1,0 +1,10 @@
+{
+  "message": {
+    "errors": [
+      {
+        "code": "payment_signature_invalid",
+        "detail": "Invalid payment signature."
+      }
+    ]
+  }
+}

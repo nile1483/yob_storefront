@@ -1,0 +1,56 @@
+{
+  "message": {
+    "data": {
+      "billing_address": "Example Billing-Billing",
+      "checkout_by": null,
+      "company": "Example Trading Co",
+      "company_address": null,
+      "contact_person": "Example Contact-Example Buyer Ltd",
+      "coupon_code": null,
+      "coupon_discount": 0.0,
+      "currency": "INR",
+      "customer": "Example Buyer Ltd",
+      "grand_total": 270.0,
+      "is_shippable": 1,
+      "items": [
+        {
+          "amount": 270.0,
+          "base_price": 12.5,
+          "conversion_factor": 0.0,
+          "discount_amount": 1.25,
+          "discount_percentage": 10.0,
+          "image": null,
+          "item_code": "YOB-BOLT-M10",
+          "item_expiry_date": null,
+          "item_name": null,
+          "item_slug": null,
+          "line_discount": 30.0,
+          "parent": "CART-2026-01-0001",
+          "parentfield": "items",
+          "parenttype": "Cart",
+          "pricing_rule_apply_on": "Item Code",
+          "pricing_rule_label": "YOB Demo Bulk Discount",
+          "pricing_rules": "[\"PRLE-0001\"]",
+          "quantity": 24.0,
+          "rate": 11.25,
+          "stock_uom": "Nos",
+          "tax_amount": 0.0,
+          "total_amount": 270.0,
+          "uom": "Nos"
+        }
+      ],
+      "net_total": 270.0,
+      "order_type": "Shopping Cart",
+      "ordered_on": null,
+      "sales_order": null,
+      "selling_price_list": "Standard Selling",
+      "shipping_address": "Example Shipping-Shipping",
+      "status": "Draft",
+      "tax_total": 0.0,
+      "total_discount": 30.0,
+      "total_quantity": 24,
+      "user": "buyer@example.com"
+    },
+    "notice": "Item added"
+  }
+}

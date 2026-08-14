@@ -9,6 +9,7 @@ from yob_storefront.api.response import (
     error_response,
     success_response,
 )
+from yob_storefront.services.order_service import order_address_display
 from yob_storefront.utils.context import STOREFRONT_APP, get_storefront_customer
 
 # ---------------- ORDER LIST ----------------
@@ -26,6 +27,10 @@ def get_orders(auth_context=None):
             "name",
             "status",
             "grand_total",
+            # The order's OWN stored currency. Previously absent, which forced
+            # the client to infer it from environment configuration -- wrong for
+            # any order not placed in the store's current default.
+            "currency",
             "transaction_date",
             "delivery_date"
         ],
@@ -128,8 +133,24 @@ def get_order_details(order_id=None, auth_context=None):
         "contact_email": order.contact_email,
         "contact_mobile": order.contact_mobile,
 
+        # IDENTIFIERS -- the linked Address masters, for "use this again" style
+        # actions. They point at CURRENT masters and may have been edited or
+        # deleted since; never render them as the order's address.
         "billing_address_name": order.customer_address,
         "shipping_address_name": order.shipping_address_name,
+
+        # HISTORICAL DISPLAY -- plain text, from the order's own immutable
+        # snapshot. This is what the order was placed against and what an
+        # invoice must show. Always `str | None`; never an object, in either the
+        # normal or the legacy-fallback case.
+        #
+        # NOTE the ERPNext field naming: `address_display` is billing, and
+        # `shipping_address` holds the shipping DISPLAY while
+        # `shipping_address_name` holds the shipping LINK.
+        "billing_address_display": order_address_display(
+            order.address_display, order.customer_address),
+        "shipping_address_display": order_address_display(
+            order.shipping_address, order.shipping_address_name),
 
         "payment_terms_template": order.payment_terms_template,
         "tc_name": order.tc_name,
@@ -157,47 +178,11 @@ def get_order_details(order_id=None, auth_context=None):
         "payment_logs": payment_logs
     }
 
-    # ---------------------------------------------------------
-    # Billing Address
-    # ---------------------------------------------------------
-    if order.customer_address:
-
-        data["billing_address"] = frappe.db.get_value(
-            "Address",
-            order.customer_address,
-            [
-                "address_title",
-                "address_line1",
-                "address_line2",
-                "city",
-                "state",
-                "country",
-                "pincode",
-                "phone"
-            ],
-            as_dict=True
-        )
-
-    # ---------------------------------------------------------
-    # Shipping Address
-    # ---------------------------------------------------------
-    if order.shipping_address_name:
-
-        data["shipping_address"] = frappe.db.get_value(
-            "Address",
-            order.shipping_address_name,
-            [
-                "address_title",
-                "address_line1",
-                "address_line2",
-                "city",
-                "state",
-                "country",
-                "pincode",
-                "phone"
-            ],
-            as_dict=True
-        )
+    # The former `billing_address` / `shipping_address` objects, built by
+    # reading the linked Address MASTER live, are deliberately gone. They made
+    # every historical order re-render with today's address, so editing an
+    # address silently rewrote the past. `*_address_display` above carries the
+    # order-time snapshot instead. See services/order_service.py.
 
     return success_response(
         data=data,

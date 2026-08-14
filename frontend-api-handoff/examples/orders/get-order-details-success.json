@@ -1,0 +1,48 @@
+{
+  "message": {
+    "data": {
+      "billing_address_display": "1 Example House, Example Road\nExampleton\nGujarat, State Code: 24\nPIN Code: 000000\nIndia\nGSTIN: 24AAAAA0000A1Z5",
+      "billing_address_name": "YOB Demo Billing-Billing",
+      "contact_email": null,
+      "contact_mobile": null,
+      "contact_person": null,
+      "currency": "INR",
+      "customer": "Example Buyer Ltd",
+      "delivery_date": "2026-08-14",
+      "discount": -175.0,
+      "grand_total": 200.0,
+      "items": [
+        {
+          "amount": 200.0,
+          "description": "Hex Bolt M10 x 50mm -- demo catalogue item.",
+          "discount_amount": -175.0,
+          "discount_percentage": 0.0,
+          "image": "",
+          "item_code": "EXAMPLE-ITEM-001",
+          "item_name": "Hex Bolt M10 x 50mm",
+          "net_amount": 200.0,
+          "price_list_rate": 12.5,
+          "qty": 2.0,
+          "rate": 100.0,
+          "uom": "Nos"
+        }
+      ],
+      "name": "SAL-ORD-2026-00001",
+      "net_total": 200.0,
+      "original_total": 25.0,
+      "payment_logs": [],
+      "payment_terms_template": null,
+      "rounded_total": 200.0,
+      "shipping_address_display": "1 Example House, Example Road\nExampleton\nGujarat, State Code: 24\nPIN Code: 000000\nIndia",
+      "shipping_address_name": "YOB Demo Shipping-Shipping",
+      "status": "Draft",
+      "subtotal": 200.0,
+      "tax": 0.0,
+      "taxes": [],
+      "tc_name": null,
+      "terms": null,
+      "transaction_date": "2026-08-14"
+    },
+    "notice": "Order fetched successfully"
+  }
+}

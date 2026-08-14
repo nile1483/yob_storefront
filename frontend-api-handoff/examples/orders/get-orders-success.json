@@ -1,0 +1,26 @@
+{
+  "message": {
+    "data": [
+      {
+        "currency": "INR",
+        "delivery_date": "2026-08-14",
+        "grand_total": 200.0,
+        "name": "SAL-ORD-2026-00001",
+        "status": "Draft",
+        "transaction_date": "2026-08-14"
+      },
+      {
+        "currency": "INR",
+        "delivery_date": "2026-08-16",
+        "grand_total": 723.0,
+        "name": "SAL-ORD-2026-00001",
+        "status": "To Deliver and Bill",
+        "transaction_date": "2026-08-09"
+      }
+    ],
+    "meta": {
+      "count": 2
+    },
+    "notice": "Orders fetched successfully"
+  }
+}

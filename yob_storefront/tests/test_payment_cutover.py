@@ -954,3 +954,202 @@ class SettlementCase(CutoverCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# =========================================================
+# SECURITY CLOSURE: tamper, cross-transaction, terminal state
+# =========================================================
+
+class PaymentSecurityClosureCase(CutoverCase):
+    """Boundaries the real browser evidence cannot prove on its own.
+
+    A successful manual payment shows the happy path works. It says nothing
+    about what happens when someone lies -- these do.
+    """
+
+    def settled(self, qty=12):
+        """Drive a real initiation + settlement through the endpoints."""
+
+        cart, data = self.started(qty=qty)
+        initiation = self.pay(data["token"], "Razorpay")
+        order_id = initiation["data"]["order_id"]
+        payment_id = self.fake.pay(order_id)
+        self.verify(order_id, payment_id)
+        return cart, data, order_id, payment_id
+
+    # ---------------------------------------------------------- 2
+
+    def test_tampered_signed_value_is_rejected(self):
+        """HMAC binding is meaningful, not decorative.
+
+        Razorpay signs `order_id|payment_id`. Here the ORDER ID is swapped for
+        another real one while the signature is left untouched -- the classic
+        replay-onto-a-different-obligation attempt. Verification must fail.
+        """
+
+        cart, data, order_id, payment_id = self.settled()
+
+        # A second, independent obligation with its own provider order.
+        other_cart, other_data = self.started(qty=2)
+        other_init = self.pay(other_data["token"], "Razorpay")
+        other_order = other_init["data"]["order_id"]
+
+        self.assertNotEqual(other_order, order_id, "fixture produced one order")
+
+        before = self.pr_row(other_data["payment_request"], "status",
+                             "custom_razorpay_payment_id")
+
+        # Same signature the fake accepts, but the signed order id changed.
+        response = self.verify(other_order, payment_id)
+
+        self.assertIsNotNone(_error_code(response),
+                             "a payment was accepted against a different order")
+        self.assertEqual(
+            dict(before),
+            dict(self.pr_row(other_data["payment_request"], "status",
+                             "custom_razorpay_payment_id")),
+            "a tampered payload mutated the obligation")
+
+    # ---------------------------------------------------------- 3
+
+    def test_payment_from_another_transaction_cannot_settle_this_request(self):
+        """Cross-transaction identifier reuse must fail closed."""
+
+        cart_a, data_a, order_a, payment_a = self.settled()
+
+        cart_b, data_b = self.started(qty=2)
+        init_b = self.pay(data_b["token"], "Razorpay")
+        order_b = init_b["data"]["order_id"]
+
+        before = self.pr_row(data_b["payment_request"], "status",
+                             "custom_razorpay_payment_id", "grand_total")
+
+        # A's captured payment, aimed at B's order.
+        response = self.verify(order_b, payment_a)
+
+        self.assertIsNotNone(_error_code(response),
+                             "another transaction's payment settled this request")
+        self.assertEqual(
+            dict(before),
+            dict(self.pr_row(data_b["payment_request"], "status",
+                             "custom_razorpay_payment_id", "grand_total")))
+
+    # ---------------------------------------------------------- 6, 7
+
+    def test_paid_request_cannot_start_another_charge(self):
+        """Terminal state. No second payable provider operation, ever."""
+
+        cart, data, order_id, payment_id = self.settled()
+
+        self.assertEqual(self.pr_row(data["payment_request"], "status").status,
+                         "Paid")
+
+        orders_before = len(self.fake.orders)
+        so_before = frappe.db.count("Sales Order")
+
+        # The token was revoked at settlement, so it must no longer authorize.
+        response = self.pay(data["token"], "Razorpay")
+
+        self.assertEqual(_error_code(response), "checkout_token_invalid",
+                         "a settled obligation still accepted a payment attempt")
+        self.assertEqual(len(self.fake.orders), orders_before,
+                         "a second provider order was created after settlement")
+        self.assertEqual(frappe.db.count("Sales Order"), so_before)
+
+    def test_revoked_token_denies_both_payment_and_page(self):
+        """Revocation is total: neither paying nor viewing survives it."""
+
+        cart, data, order_id, payment_id = self.settled()
+
+        self.assertIsNone(
+            self.pr_row(data["payment_request"],
+                        "custom_checkout_token").custom_checkout_token)
+
+        self.assertEqual(_error_code(self.checkout(data["token"])),
+                         "checkout_token_invalid")
+        self.assertEqual(_error_code(self.pay(data["token"], "Razorpay")),
+                         "checkout_token_invalid")
+
+    # ---------------------------------------------------------- 8
+
+    def test_abandoned_unpaid_request_reopens_without_duplicating(self):
+        """The state observed naturally in production, reproduced.
+
+        Provider order exists, no payment id, token still live, unpaid. A payer
+        returning to the link must be able to continue -- and must not cause a
+        second Sales Order or a second provider order.
+        """
+
+        cart, data = self.started()
+        first = self.pay(data["token"], "Razorpay")   # opened checkout, walked away
+
+        row = self.pr_row(data["payment_request"], "status",
+                          "custom_razorpay_order_id", "custom_razorpay_payment_id",
+                          "custom_checkout_token")
+
+        self.assertNotEqual(row.status, "Paid")
+        self.assertTrue(row.custom_razorpay_order_id, "no provider order")
+        self.assertIsNone(row.custom_razorpay_payment_id, "unexpectedly paid")
+        self.assertTrue(row.custom_checkout_token, "token was revoked too early")
+
+        so_after_first = frappe.db.count("Sales Order")
+        orders_after_first = len(self.fake.orders)
+
+        # Payer returns to the same link.
+        page = self.checkout(data["token"])
+        self.assertIsNone(_error_code(page), f"link stopped working: {page}")
+
+        second = self.pay(data["token"], "Razorpay")
+
+        self.assertIsNone(_error_code(second), f"could not continue: {second}")
+        self.assertEqual(second["data"]["order_id"], first["data"]["order_id"],
+                         "a second provider order was created")
+        self.assertEqual(second["data"]["sales_order"],
+                         first["data"]["sales_order"])
+        self.assertEqual(frappe.db.count("Sales Order"), so_after_first)
+        self.assertEqual(len(self.fake.orders), orders_after_first)
+
+        # And a forged success against it still fails.
+        forged = self.verify(row.custom_razorpay_order_id, "pay_FORGED",
+                             signature="not-the-real-signature")
+        self.assertEqual(_error_code(forged), "payment_signature_invalid")
+        self.assertNotEqual(
+            self.pr_row(data["payment_request"], "status").status, "Paid")
+
+    # ---------------------------------------------------------- 13
+
+    def test_production_rollback_leaves_the_harness_usable(self):
+        """A real server_error() rollback must not poison the next test.
+
+        server_error() calls frappe.db.rollback(), which destroys the enclosing
+        savepoint. This asserts the endpoint still answers correctly and that
+        the DB is usable afterwards -- the cascade this suite hit previously.
+        """
+
+        cart, data = self.started()
+
+        from yob_storefront.api import payment
+
+        with patch.object(payment, "resolve_checkout_token",
+                          side_effect=RuntimeError("boom")):
+            response = self.pay(data["token"], "Razorpay")
+
+        self.assertEqual(_error_code(response), "internal_server_error")
+
+        # The rollback really executed and was TOTAL -- in a request everything
+        # since the last commit is undone. Here that includes this test's own
+        # fixture, because nothing in the suite commits. That is the correct
+        # production behaviour, not a defect: no half-committed state can
+        # survive a caught internal error. In a real HTTP request the fixture
+        # would have been committed by an earlier request and would survive.
+        self.assertIsNone(
+            self.pr_row(data["payment_request"], "reference_doctype"),
+            "a caught internal error left partial state behind")
+
+        # And the decisive part: the harness is still usable afterwards.
+        # Querying works, and tearDown falls back to a full rollback rather
+        # than raising "SAVEPOINT phase1 does not exist" -- which is what used
+        # to cascade into every following test in the class.
+        self.assertIsInstance(frappe.db.count("Payment Request"), int)
+        self.assertTrue(frappe.db.exists("Customer", CUSTOMER),
+                        "committed baseline data was lost")

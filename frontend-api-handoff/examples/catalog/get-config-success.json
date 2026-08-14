@@ -1,0 +1,18 @@
+{
+  "message": {
+    "data": {
+      "allow_guest_purchase": 0,
+      "allowed_payment_modes": [],
+      "company": "Example Trading Co",
+      "default_currency": "INR",
+      "default_price_list": "Standard Selling",
+      "default_privacy_page": null,
+      "default_terms_page": null,
+      "default_warehouse": null,
+      "store_domain": "storefront.example",
+      "store_logo": null,
+      "store_name": "Example Store"
+    },
+    "notice": "Store config loaded"
+  }
+}

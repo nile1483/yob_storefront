@@ -1,0 +1,21 @@
+{
+  "message": {
+    "data": [
+      {
+        "banner": null,
+        "category_name": "Industrial Supplies",
+        "display_order": 1,
+        "meta_description": null,
+        "meta_title": null,
+        "name": "Industrial Supplies",
+        "parent_category": null,
+        "slug": "industrial-supplies",
+        "thumbnail": null
+      }
+    ],
+    "meta": {
+      "count": 1
+    },
+    "notice": "Categories loaded"
+  }
+}

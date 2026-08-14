@@ -1,0 +1,9 @@
+{
+  "message": {
+    "data": {
+      "billing_address": "Example Billing-Billing",
+      "shipping_address": "Example Shipping-Shipping"
+    },
+    "notice": "Billing address updated"
+  }
+}
