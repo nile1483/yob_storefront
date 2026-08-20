@@ -203,6 +203,207 @@ credentials to Frappe Payments, and retains YOB extensions for capabilities
 Payments does not provide: deterministic receipt identity, recovery by receipt,
 provider order fetch, and server-side HMAC verification.
 
+## Catalog listing (Phase 22B-1, retired legacy path in 22B-3)
+
+Responsibilities are now split cleanly, and there is only one product path.
+
+| | `catalog.get_category` | `catalog.get_items` |
+| --- | --- | --- |
+| Returns | category metadata + child categories | products |
+| Products | **none** | one bounded page |
+| Pricing calls | **zero, always** | ~page size |
+| Parameters | `slug` | scope, search, sort, page_size, cursor, qty |
+
+```text
+get_category  -> category metadata and children
+get_items     -> ALL storefront product listing
+```
+
+### The retired path
+
+Until Phase 22B-3, `get_category` also returned an embedded `items` array: every
+Item in a leaf category, each priced through a throwaway Sales Order. Phase 22A
+measured it at ~51 ms per Item, growing linearly (100 items took 5.1 s), and a
+single end-of-life Item returned a 500 for the whole category. It was unbounded by
+construction -- no limit, no cursor, no way for a caller to ask for less.
+
+Phase 22B-2 migrated Angular to `get_items`; Phase 22B-3 deleted the item loading,
+the per-item pricing, the `items` response field, `meta.item_count`, and the `qty`
+parameter that existed only to price those products.
+
+`tests/test_catalog_category.py` asserts **zero pricing calls** for leaf categories
+holding 0, 1, 12 and 30 Items, and that no Item query runs at all. That assertion --
+not the absence of a response field -- is what stops the unbounded path returning:
+deleting a key while keeping the loop would still pass a shape check.
+
+### Catalog visibility rule
+
+An Item is listable only when an applicable **base Item Price > 0** resolves for the
+customer, judged **before** Pricing Rules:
+
+```text
+no Item Price + fixed-rate Pricing Rule   -> NOT listable
+Item Price 0  + Pricing Rule              -> NOT listable
+Item Price 100 + 100% discount rule       -> listable (final rate may be 0)
+```
+
+Phase 22A proved a fixed-rate rule alone yields `price_list_rate = 999` with no Item
+Price at all. Eligibility is a statement about the base price, never the final rate.
+
+### Three stages
+
+```text
+Stage 1  bounded SQL candidates -- category, disabled, is_sales_item, has_variants,
+         end_of_life, item_name search, keyset cursor, plus a BROAD `EXISTS` test for
+         any possibly-applicable positive Item Price.
+         A deliberate SUPERSET: false positives are fine, false negatives are lost
+         products. It never decides WHICH price wins.
+Stage 2  exact base price via ERPNext's own `get_price_list_rate_for`, plus
+         variant->template and default-price-list fallbacks. Eligible iff > 0.
+Stage 3  the existing Sales Order pricing engine, unchanged and still authoritative.
+```
+
+Stage 2 runs before Stage 3, so no Sales Order is ever built for an Item that has no
+valid base price.
+
+### Candidate scanning and continuation
+
+Because Stage 1 is a superset, a page of 24 products is not 24 candidate rows: a run
+of candidates can pass the cheap query and then fail exact Stage-2 eligibility. The
+listing therefore scans in bounded batches until the page plus its lookahead is
+filled, or the candidate space runs out.
+
+Two limits, and the difference between them matters:
+
+| Constant | Meaning |
+| --- | --- |
+| `MAX_CANDIDATE_BATCH` (96) | ceiling on rows returned by **one** candidate query; the batch itself is derived from `page_size` |
+| `MAX_CANDIDATE_SCAN` (2000) | rows one **request** will examine before handing continuation back to the client |
+
+`MAX_CANDIDATE_SCAN` is a **work budget, not a correctness boundary**. It exists only
+so a single HTTP request terminates -- a category of 100k ineligible rows must not pin
+a worker. Spending it never ends pagination.
+
+There are exactly three outcomes, and each reports itself honestly:
+
+| Outcome | `has_more` | `next_cursor` | Page |
+| --- | --- | --- | --- |
+| Page filled | `true` | last **returned** Item | full |
+| Scan budget spent | `true` | last **examined** candidate | **may be short or even empty** |
+| Candidates exhausted | `false` | `null` | short or full |
+
+**Only genuine exhaustion is terminal.** A short or empty page with `has_more=true` is
+a valid, expected answer meaning "no more products found *yet*" -- the client calls
+Load More again and the scan resumes past the candidates already rejected, so progress
+is guaranteed and no candidate is examined twice.
+
+> Phase 22B-1 originally capped the scan at a fixed number of batches and treated
+> hitting that cap as exhaustion. A run of Stage-1 false positives longer than the cap
+> then answered `has_more=false`, stranding every product behind it with no way for a
+> client to ask again. Fixed in Phase 22B-1A; there is no fixed batch-count cap, and
+> `CandidateScanContinuationCase` regression-tests all three outcomes above.
+
+### Price list and fallback
+
+Customer default -> Customer Group default -> `Selling Settings.selling_price_list`.
+
+Two ERPNext guards differ and both are mirrored rather than tidied:
+
+* **variant -> template** falls back only when the rate `is None`; a stored 0 is a
+  real answer and stops there (`get_item_details.py:1043`);
+* **selected list -> default list** falls back when the rate is falsy, so a stored 0
+  DOES fall through when `fallback_to_default_price_list` is on
+  (`get_item_details.py:125`). Verified by test.
+
+### Contract summary
+
+* scope: `scope_type=category` only; `collection`/`all` answer `unsupported_scope`.
+  A group category answers `category_not_listable` -- no descendant recursion.
+* search: `item_name` only, whitespace-split, **AND** across words, `%`/`_` escaped.
+* sort: `name_asc` (default) | `name_desc` | `newest`, each with the Item `name` as
+  tiebreak. Never `modified` (it reshuffles on edit and breaks the cursor), never price.
+* filters: must be absent or empty; anything else answers `unsupported_filters`.
+* page_size: 1..48, default 24; out-of-range is refused, not clamped.
+* pagination: opaque keyset cursor bound to scope + search + sort + customer +
+  price list. It is never an authorization mechanism -- category and customer are
+  re-authorised on every request.
+* response: `{items[], pagination{returned_count, page_size, has_more, next_cursor}}`.
+  `has_more=true` means either another Item survived the FULL pipeline, or the scan
+  budget was spent with candidates still unexamined -- never merely that another raw
+  row exists. `returned_count` may be less than `page_size`, or 0, while `has_more`
+  is still true; only `has_more=false` with `next_cursor=null` means the end. See
+  "Candidate scanning and continuation" above.
+
+ERPNext remains the final pricing authority; YOB only decides which items to price.
+
+## Row-level tax on `pricing_rows` (Phase 23B-3)
+
+`cart.pricing_rows` is authoritative for row **price and row tax**. Each row gains:
+
+```text
+tax_amount        net tax attributable to that Sales Order row
+total_amount      net_amount + tax_amount
+tax_components[]  tax_type, label, rate, amount, taxable_amount,
+                  included_in_print_rate, charge_type
+```
+
+### Where the numbers come from
+
+`calculate_taxes_and_totals` leaves `doc._item_wise_tax_details` on the priced
+Sales Order -- one entry per (item row, tax row) pair. YOB reads that and nothing
+else. **YOB never calculates GST**: it applies no percentage, infers no
+CGST/SGST/IGST from addresses, and decides no jurisdiction. ERPNext and India
+Compliance own all of it.
+
+### Row identity, not `item_code`
+
+Entries carry the actual item ROW OBJECT, so extraction groups on `id(item_row)`.
+`item_code` would merge a paid row's tax onto its same-SKU promotion row.
+ERPNext's own `get_itemised_tax()` keys by `item_code`, which is exactly why it
+cannot be reused here.
+
+### Currency
+
+`_item_wise_tax_details` amounts are **base/company currency** -- built at
+`base_tax_amount` precision, and `adjust_rounding_in_item_wise_tax_details`
+reconciles them against `tax.base_tax_amount_after_discount_amount`. They are
+divided by `conversion_rate` and rounded once at the transaction precision.
+Returning them raw would put company-currency tax beside a transaction-currency
+rate. Storefront transactions are single-currency today (company currency ==
+cart currency), so multi-currency remains **untested and unsupported**.
+
+### Inclusive tax
+
+`total_amount = net_amount + tax_amount`, **never `amount + tax_amount`**. For an
+inclusive 18% on a rate of 100 the row total is 100, not 136 -- `amount` already
+contains the tax while `net_amount` is the taxable base under both treatments.
+
+### GST classification
+
+`gst_tax_type` is read from India Compliance, never from account-name matching.
+IC sets it during document **validate**, which the pricing Sales Order never runs
+(it is in-memory and never inserted), so the projection calls IC's own
+`set_gst_tax_type()` first. That is metadata population, not classification.
+
+A charge IC does not classify keeps `tax_type: null` and its description as
+label -- numerically correct and never mislabelled as GST.
+
+> On a **GST-unregistered** company IC returns no classification at all
+> (`ignore_gst_validations` short-circuits to an empty account map). The current
+> dev company is `gst_category: Unregistered` with no GSTIN, so component types
+> are legitimately `null` there. Numeric tax parity is asserted regardless; the
+> CGST/SGST vs IGST split assertions skip with that reason rather than passing by
+> luck.
+
+### What stays where
+
+* Promotion rows carry their **own** ERPNext-derived tax -- never copied from the
+  paid row, never assumed zero.
+* Cart Item tax fields remain a **non-authoritative snapshot**.
+* No tax is persisted as customer intent; the projection is rebuilt every reprice.
+* **Cart summary remains the document total**, not a sum of row totals: documents
+  carry rounding, additional discount and document-level charges.
+
 ## Owned DocTypes
 
 Known Storefront-owned DocTypes from the reviewed archive:

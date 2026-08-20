@@ -13,10 +13,15 @@ from frappe.utils import get_url
 from yob_storefront.api.response import (
     APPLICATION_ACCESS_DENIED,
     CATEGORY_NOT_FOUND,
+    CATEGORY_NOT_LISTABLE,
     HTTP_FORBIDDEN,
     HTTP_NOT_FOUND,
     HTTP_UNPROCESSABLE,
     ITEM_NOT_FOUND,
+    PAGE_SIZE_INVALID,
+    UNSUPPORTED_FILTERS,
+    UNSUPPORTED_SCOPE,
+    UNSUPPORTED_SORT,
     VALIDATION_FAILED,
     error_response,
     server_error,
@@ -108,7 +113,28 @@ def get_categories(parent_slug=None, auth_context=None):
 @frappe.whitelist(methods=["GET"])
 @yob_api
 @require_application(STOREFRONT_APP, profile_doctype="Customer")
-def get_category(slug=None, qty=1, auth_context=None):
+def get_category(slug=None, auth_context=None):
+    """Category metadata and its child categories. **No products.**
+
+    ## The embedded product payload was retired in Phase 22B-3
+
+    This endpoint used to load every Item in a leaf category and price each one
+    through a throwaway Sales Order. Phase 22A measured that: one pricing call and
+    one temporary Sales Order per Item at ~51 ms each, growing linearly (100 items
+    took 5.1 s), and a single end-of-life Item returned a 500 for the whole
+    category. It was unbounded by construction -- no limit, no cursor, no way for a
+    caller to ask for less.
+
+    All product listing now belongs to `get_items`, which is bounded, sorted,
+    cursor-paginated and isolates per-item failures. Nothing here queries Item,
+    prices anything, or paginates -- and `tests/test_catalog_category.py` asserts
+    zero pricing calls so the old behaviour cannot creep back.
+
+    `items` and `meta.item_count` are gone from the response, and the `qty`
+    parameter with them: it existed only to price the embedded products. Frappe
+    filters keyword arguments to a function's signature, so a stale client still
+    sending `qty` is unaffected.
+    """
 
     if not slug:
         return error_response(
@@ -119,11 +145,11 @@ def get_category(slug=None, qty=1, auth_context=None):
         )
 
     try:
-        # 🔐 Enforce Login + Customer
-        customer = get_storefront_customer(auth_context)
-        
-        settings = frappe.get_cached_doc("YOB Store Settings")
-        
+        # 🔐 Enforce Login + Customer. The identity is not used for pricing any
+        # more, but the authorization boundary is unchanged on purpose: category
+        # metadata stays behind the same storefront application check it always had.
+        get_storefront_customer(auth_context)
+
         category = frappe.get_value(
             "Category",
             {"slug": slug, "is_active": 1},
@@ -159,7 +185,6 @@ def get_category(slug=None, qty=1, auth_context=None):
             category["banner"] = category["banner"]
 
         subcategories = []
-        items = []
 
         # ---------------- GROUP CATEGORY ----------------
         if category["is_group"]:
@@ -187,65 +212,18 @@ def get_category(slug=None, qty=1, auth_context=None):
                     child["thumbnail"] = child["thumbnail"]
 
         # ---------------- LEAF CATEGORY ----------------
-        else:
+        # Nothing to do. A leaf category carries no product payload: products are
+        # served exclusively by `get_items`, which is bounded, sorted and
+        # cursor-paginated. See the retirement note above.
 
-            raw_items = frappe.get_all(
-                "Item",
-                filters={
-                    "custom_category": category["name"],
-                    "disabled": 0,
-                    "is_sales_item": 1
-                },
-                fields=[
-                    "name",
-                    "item_name",
-                    "custom_slug",
-                    "image",
-                    "stock_uom",
-                ]
-            )
-
-            for item in raw_items:
-
-                pricing = get_item_pricing(
-                    customer=customer,
-                    item_code=item["name"],
-                    qty=qty,
-                    company=settings.company,
-                    currency=settings.default_currency
-                )
-                 
-                items.append({
-                    "name": item["name"],
-                    "item_name": item["item_name"],
-                    "slug": item["custom_slug"],
-                    "stock_uom": item["stock_uom"],
-                    # "image": get_url(item["image"]) if item.get("image") else None,
-                    "image": item["image"] if item.get("image") else None,
-                    
-
-                    "base_price": pricing["base_price"],
-                    "rate": pricing["rate"],
-                    "discount_percentage": pricing["discount_percentage"],
-                    "discount_amount": pricing["discount_amount"],
-
-                    "net_amount": pricing["net_amount"],
-                    "tax_amount": pricing["tax_amount"],
-                    "total_amount": pricing["total_amount"],
-
-                    "pricing_rule_label": pricing["pricing_rule_label"]
-                })
-                 
         return success_response(
             {
                 "category": category,
                 "subcategories": subcategories,
-                "items": items
             },
             notice="Category loaded",
             meta={
                 "subcategory_count": len(subcategories),
-                "item_count": len(items),
             },
         )
 
@@ -310,6 +288,8 @@ def get_item(slug=None, qty=1, auth_context=None):
             currency=currency
         )
 
+        stock_info = resolve_stock_availability(customer, item["name"])
+
         rules = get_applicable_pricing_rules(
             # The helper does frappe.db.get_value("Customer", customer, ...),
             # so it needs the Customer NAME. Passing the document made Frappe
@@ -341,7 +321,22 @@ def get_item(slug=None, qty=1, auth_context=None):
             "tax_label":  pricing["tax_label"],
             "total_amount": pricing["total_amount"],
 
+            # The UOM the transaction actually resolved -- read off the priced
+            # Sales Order row, not guessed from the Item. No selectable UOM here;
+            # this is metadata so the frontend can display the right unit rather
+            # than inferring it from text.
             "uom": pricing["uom"],
+            "stock_uom": stock_info["stock_uom"],
+
+            # Availability for the ACTUAL SKU (a variant reports its own stock,
+            # never its template's) in the warehouse this transaction would use.
+            # `None` for a non-stock item, and `None` -- never 0 -- when no
+            # warehouse resolves: absent stock and zero stock are different facts,
+            # and returning 0 would read as "out of stock".
+            "is_stock_item": stock_info["is_stock_item"],
+            "warehouse": stock_info["warehouse"],
+            "actual_qty": stock_info["actual_qty"],
+
             "pricing": pricing,
 
             "pricing_rule_label": pricing["pricing_rule_label"],
@@ -355,3 +350,245 @@ def get_item(slug=None, qty=1, auth_context=None):
 
     # except Exception:
     #     return server_error("Get Item Error", "Failed to load item")
+
+# =========================================================
+# BOUNDED CATALOG LISTING  (Phase 22B-1)
+# =========================================================
+
+@frappe.whitelist(methods=["GET"])
+@yob_api
+@require_application(STOREFRONT_APP, profile_doctype="Customer")
+def get_items(
+    scope_type="category",
+    scope_value=None,
+    search=None,
+    filters=None,
+    sort=None,
+    page_size=None,
+    cursor=None,
+    qty=1,
+    auth_context=None,
+):
+    """Bounded, cursor-paginated catalog listing.
+
+    Replaces the unbounded item payload of `get_category()`. That path loads every
+    Item in a category and runs one temporary Sales Order per Item -- Phase 22A
+    measured 100 items at 5.1 s, growing linearly, with one bad Item aborting the
+    whole response. This endpoint keeps the expensive pricing proportional to the
+    PAGE and isolates per-item failures.
+
+    Parameters are flat, matching the rest of this API rather than introducing a
+    nested query object.
+
+    * `scope_type`  -- only `category` is implemented. `collection` and `all` are
+      reserved and answer `unsupported_scope` so they cannot be reached by guessing.
+    * `scope_value` -- the category slug, validated exactly as `get_category` does.
+      Group categories are refused rather than silently recursing into children.
+    * `search`      -- matched against `item_name` ONLY. Multiple words are ANDed.
+    * `filters`     -- must be absent or empty; a non-empty set answers
+      `unsupported_filters` rather than being silently dropped.
+    * `sort`        -- `name_asc` (default) | `name_desc` | `newest`.
+    * `page_size`   -- 1..48, default 24.
+    * `cursor`      -- opaque; from a previous response.
+
+    The Customer comes from `auth_context` only. There is no parameter through which
+    a browser can list or price as somebody else.
+    """
+
+    from yob_storefront.services.catalog_listing_service import (
+        DEFAULT_PAGE_SIZE,
+        DEFAULT_SORT,
+        MAX_PAGE_SIZE,
+        MIN_PAGE_SIZE,
+        SORT_MODES,
+        SUPPORTED_SCOPE_TYPES,
+        ListingError,
+        PricingContext,
+        decode_cursor,
+        list_items,
+        normalize_search,
+    )
+
+    try:
+        # ---------------- scope ----------------
+        if scope_type not in SUPPORTED_SCOPE_TYPES:
+            return error_response(
+                UNSUPPORTED_SCOPE,
+                "That listing scope is not supported.",
+                field="scope_type",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
+        if not scope_value:
+            # Absent scope is NOT "everything" -- that would be the `all` scope,
+            # which is deliberately not implemented.
+            return error_response(
+                VALIDATION_FAILED,
+                "Category is required.",
+                field="scope_value",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
+        # ---------------- filters ----------------
+        parsed_filters = filters
+        if isinstance(parsed_filters, str):
+            try:
+                parsed_filters = frappe.parse_json(parsed_filters)
+            # Narrow on purpose: a bare `except Exception` here would report a
+            # genuine backend fault as "filters not supported". These two are the
+            # real failure modes of parsing caller-supplied JSON.
+            except (ValueError, TypeError):
+                return error_response(
+                    UNSUPPORTED_FILTERS,
+                    "Filters are not supported yet.",
+                    field="filters",
+                    status_code=HTTP_UNPROCESSABLE,
+                )
+
+        if parsed_filters:
+            return error_response(
+                UNSUPPORTED_FILTERS,
+                "Filters are not supported yet.",
+                field="filters",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
+        # ---------------- sort ----------------
+        sort = sort or DEFAULT_SORT
+        if sort not in SORT_MODES:
+            return error_response(
+                UNSUPPORTED_SORT,
+                "That sort option is not supported.",
+                field="sort",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
+        # ---------------- page size ----------------
+        if page_size in (None, ""):
+            page_size = DEFAULT_PAGE_SIZE
+        try:
+            page_size = int(page_size)
+        except (TypeError, ValueError):
+            page_size = -1
+
+        if page_size < MIN_PAGE_SIZE or page_size > MAX_PAGE_SIZE:
+            # Explicitly refused, never clamped: silently serving 48 for a request
+            # of 5000 would hide the client bug that produced it.
+            return error_response(
+                PAGE_SIZE_INVALID,
+                f"page_size must be between {MIN_PAGE_SIZE} and {MAX_PAGE_SIZE}.",
+                field="page_size",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
+        # ---------------- category ----------------
+        customer = get_storefront_customer(auth_context)
+
+        category = frappe.get_value(
+            "Category",
+            {"slug": scope_value, "is_active": 1},
+            ["name", "is_group"],
+            as_dict=True,
+        )
+        if not category:
+            return error_response(
+                CATEGORY_NOT_FOUND,
+                "Category not found.",
+                field="scope_value",
+                status_code=HTTP_NOT_FOUND,
+            )
+
+        if category.is_group:
+            # A category scope is exactly one category. Recursing into descendants
+            # would make the page size and the cursor meaningless.
+            return error_response(
+                CATEGORY_NOT_LISTABLE,
+                "This category holds sub-categories rather than products.",
+                field="scope_value",
+                status_code=HTTP_UNPROCESSABLE,
+            )
+
+        # ---------------- run ----------------
+        terms = normalize_search(search)
+        ctx = PricingContext(customer, qty=qty)
+        after_keys = decode_cursor(cursor, ctx, scope_type, scope_value, terms, sort)
+
+        items, has_more, next_cursor, _batches = list_items(
+            ctx, category.name, terms, sort, page_size, after_keys, scope_type, scope_value
+        )
+
+        return success_response(
+            {
+                "items": items,
+                "pagination": {
+                    "returned_count": len(items),
+                    "page_size": page_size,
+                    "has_more": has_more,
+                    "next_cursor": next_cursor,
+                },
+                "query": {
+                    "scope_type": scope_type,
+                    "scope_value": scope_value,
+                    "search": " ".join(terms),
+                    "sort": sort,
+                },
+            },
+            notice="Items loaded",
+        )
+
+    except ListingError as exc:
+        # Expected, client-fixable: a bad cursor or an over-long search.
+        return error_response(
+            exc.code, exc.message, field=exc.field, status_code=HTTP_UNPROCESSABLE
+        )
+
+    except Exception:
+        return server_error("Get Items Error", "Failed to load items")
+
+
+# =========================================================
+# PRODUCT AVAILABILITY  (Phase 23B-1)
+# =========================================================
+
+def resolve_stock_availability(customer_doc, item_code):
+    """Stock for one SKU in the warehouse this customer's order would use.
+
+    Three rules, each deliberate:
+
+    * **the actual SKU** -- a variant reports its own stock. Its template is not a
+      transactable item and its balance would be meaningless here.
+    * **one warehouse**, the one ERPNext resolves for the Sales Order line. Summing
+      every warehouse would promise stock the order cannot draw on.
+    * **`None`, never `0`**, for a non-stock item or an unresolved warehouse.
+      Zero means "we have none"; absent means "quantity does not apply". Collapsing
+      them would show every service item as out of stock.
+
+    Never raises: availability is decoration on a catalogue read, and a stock
+    lookup must not be able to fail the product page.
+    """
+
+    info = frappe.db.get_value(
+        "Item", item_code, ["is_stock_item", "stock_uom"], as_dict=True) or {}
+
+    result = {
+        "is_stock_item": frappe.utils.cint(info.get("is_stock_item")),
+        "stock_uom": info.get("stock_uom"),
+        "warehouse": None,
+        "actual_qty": None,
+    }
+
+    if not result["is_stock_item"]:
+        return result
+
+    from yob_storefront.services.pricing_context import context_for
+
+    warehouse = context_for(customer_doc).resolved_warehouse(item_code)
+    if not warehouse:
+        return result
+
+    result["warehouse"] = warehouse
+    result["actual_qty"] = frappe.utils.flt(
+        frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse},
+                            "actual_qty") or 0
+    )
+    return result

@@ -13,6 +13,14 @@ def build_cart_response(cart, removed_items=None, price_updated_items=None):
     cart_dict = cart.as_dict(no_default_fields=True)
     cart_dict["name"] = cart.name
 
+    # ADDITIVE: the authoritative pricing result, paid rows and ERPNext-generated
+    # promotion rows alike. `items` keeps its existing shape and meaning so the
+    # deployed Angular cart is unaffected; a later frontend gate renders this.
+    #
+    # `items` cannot express a promotion: a same-SKU free row shares its paid
+    # row's item_code, and a different-SKU gift has no Cart row at all.
+    cart_dict["pricing_rows"] = cart.flags.get("pricing_projection") or []
+
     for item in cart_dict.get("items", []):
         item["image"] = get_url(item["image"]) if item.get("image") else None
     # ===============================
@@ -198,7 +206,10 @@ def reprice_cart(cart, customer):
     # Sync sales order to cart
     # --------------------------------------------
     
-    sync_sales_order_to_cart(cart, so)
+    # The projection is the authoritative pricing RESULT, including the
+    # promotion rows ERPNext generated. It is stashed on the document rather
+    # than persisted: Cart Items stay customer intent only.
+    cart.flags.pricing_projection = sync_sales_order_to_cart(cart, so)
 
     # ------------------------------------------------
     # Detect updated items

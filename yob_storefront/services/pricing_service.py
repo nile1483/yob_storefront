@@ -7,7 +7,7 @@ B2B Secure – Uses Full Sales Order Engine Only
 
 import json
 import frappe
-from frappe.utils import today, getdate
+from frappe.utils import flt, getdate, today
 from erpnext.accounts.party import get_default_price_list
 from pprint import pprint 
 
@@ -186,10 +186,33 @@ def calculate_cart_using_sales_order(cart, customer_doc):
 
     so = frappe.new_doc("Sales Order")
 
+    # ------------------------------------------------------------------
+    # TRANSACTION CONTEXT -- resolved, not read back off the Cart.
+    #
+    # `cart.selling_price_list` used to be the authority here. It is written once
+    # by get_or_create_cart() from YOB Store Settings.default_price_list, which
+    # ignores the Customer and Customer Group entirely -- so a customer whose own
+    # price list said 600 was charged the store default of 1000, and the product
+    # page (which resolves properly) disagreed with the Cart. Reproduced in Phase
+    # 23B-1 and pinned by test_pricing_convergence.py.
+    #
+    # It was also written only at cart CREATION, so a later change to the
+    # customer's price list never reached an existing cart.
+    #
+    # The resolved value is written back so the stored field converges and
+    # create_sales_order_from_cart(), which still reads it, stays in parity.
+    # ------------------------------------------------------------------
+    from yob_storefront.services.pricing_context import context_for
+
+    ctx = context_for(customer_doc)
+
+    if cart.selling_price_list != ctx.price_list:
+        cart.selling_price_list = ctx.price_list
+
     so.customer = customer_doc.name
-    so.company  = cart.company
-    so.currency = cart.currency
-    so.selling_price_list = cart.selling_price_list
+    so.company  = cart.company or ctx.company
+    so.currency = cart.currency or ctx.currency
+    so.selling_price_list = ctx.price_list
     so.transaction_date = today() 
     
     if cart.coupon_code:
@@ -256,11 +279,27 @@ def sync_sales_order_to_cart(cart, so):
     cart.total_discount = 0
 
     # -----------------------------
-    # Map cart items by item_code
+    # Map cart items by item_code -- PAID ROWS ONLY
     # -----------------------------
+    # A Cart Item is customer PAID INTENT. ERPNext-generated promotion rows are
+    # transient pricing output and must never be written onto it.
+    #
+    # This loop used to walk every Sales Order row. Two things broke as a result,
+    # both reproduced in Phase 23A:
+    #
+    #   * a same-SKU free row (rate 0) mapped onto the SAME cart row as its paid
+    #     row and, arriving last, overwrote base_price/rate/amount with ZERO --
+    #     the buyer saw a free line beside a non-zero total;
+    #   * a different-SKU gift had no cart row at all and was silently dropped,
+    #     so an earned free product never appeared.
+    #
+    # Promotions are now carried by the projection built below instead.
     cart_items_map = {row.item_code: row for row in cart.items}
 
     for so_row in so.items:
+
+        if so_row.get("is_free_item"):
+            continue                      # promotion output, not customer intent
 
         cart_row = cart_items_map.get(so_row.item_code)
 
@@ -324,6 +363,236 @@ def sync_sales_order_to_cart(cart, so):
         else:
             cart_row.pricing_rule_label = None
             cart_row.pricing_rule_apply_on = None
+
+    return build_pricing_projection(so, cart)
+
+
+# =========================================================
+# CART PRICING PROJECTION
+# =========================================================
+
+def normalize_pricing_rules(value):
+    """ERPNext's `pricing_rules` in one shape, whatever it arrives as.
+
+    Phase 23A found paid rows carrying a JSON array (`["PRLE-0001"]`) while the
+    free rows generated from the same rule carry a bare string (`PRLE-0001`).
+    Parsing that assumed either format would drop half the promotions, so both
+    are accepted and a list is always returned.
+    """
+
+    if not value:
+        return []
+
+    if isinstance(value, list):
+        return [str(v) for v in value if v]
+
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                return [text]
+            if isinstance(parsed, list):
+                return [str(v) for v in parsed if v]
+            return [str(parsed)] if parsed else []
+        return [text]
+
+    return [str(value)]
+
+
+def _ensure_gst_tax_type(so):
+    """Populate India Compliance's `gst_tax_type` on the pricing order's tax rows.
+
+    IC sets this field inside `validate_transaction`, which runs as the document
+    VALIDATE event. The pricing Sales Order is deliberately never validated -- it
+    is an in-memory projection that is never inserted -- so without this the field
+    is empty and every GST component would come back unclassified.
+
+    This calls IC's OWN `set_gst_tax_type`, which maps account heads through IC's
+    account map. It classifies nothing here: writing a YOB lookup, or matching
+    "CGST" against account names, would be a second source of truth for a
+    question India Compliance already answers.
+
+    Metadata only -- no tax is calculated, added or moved, and the call is
+    idempotent. Absent IC (another site, another deployment) the components stay
+    generic rather than the request failing.
+    """
+
+    if any(t.get("gst_tax_type") for t in so.get("taxes") or []):
+        return
+
+    try:
+        from india_compliance.gst_india.overrides.transaction import set_gst_tax_type
+    except ImportError:
+        return          # India Compliance not installed; generic components stand
+
+    set_gst_tax_type(so)
+
+
+def extract_row_taxes(so):
+    """Authoritative per-ROW tax, straight out of ERPNext's final calculation.
+
+    ## Where this comes from
+
+    `calculate_taxes_and_totals` leaves `doc._item_wise_tax_details` on the
+    document: one entry per (item row, tax row) pair, carrying `rate`, `amount`
+    and `taxable_amount`. YOB reads that and converts nothing of substance --
+    ERPNext and India Compliance decide jurisdiction, CGST/SGST vs IGST, Item Tax
+    Templates and rates. No percentage is ever applied here.
+
+    ## Row identity, not item_code
+
+    Each entry holds the actual item ROW OBJECT, so this groups on `id(item)`.
+    `item_code` would be wrong: a same-SKU promotion produces two rows sharing one
+    code, and keying on it would merge a paid row's tax onto its free row.
+    ERPNext's own `get_itemised_tax()` does key by `item_code`, which is exactly
+    why it cannot be reused here.
+
+    ## Currency
+
+    `_item_wise_tax_details` amounts are **base/company currency** -- built from
+    `base_tax_amount` precision, and `adjust_rounding_in_item_wise_tax_details`
+    reconciles them against `tax.base_tax_amount_after_discount_amount`. The
+    storefront prices in transaction currency, so amounts are divided by
+    `conversion_rate`. Returning them raw would put company-currency tax beside a
+    transaction-currency rate.
+
+    ## Rounding
+
+    ERPNext has already pushed the rounding difference onto the last breakup row
+    so the total reconciles with the tax row. Nothing is re-rounded per row here;
+    values are only converted and rounded once at the transaction precision.
+
+    Returns `{id(item_row): [component, ...]}`.
+    """
+
+    details = so.get("_item_wise_tax_details") or []
+    if not details:
+        return {}
+
+    _ensure_gst_tax_type(so)
+
+    conversion_rate = flt(so.get("conversion_rate")) or 1
+    precision = so.precision("tax_amount", "taxes")
+
+    by_row = {}
+
+    for detail in details:
+        item = detail.get("item")
+        tax = detail.get("tax")
+        if not item or not tax:
+            continue
+
+        # Valuation-only charges never reach the customer. ERPNext skips them in
+        # its own itemised view for the same reason.
+        if getattr(tax, "category", None) == "Valuation":
+            continue
+
+        amount = flt(flt(detail.get("amount")) / conversion_rate, precision)
+        taxable = flt(flt(detail.get("taxable_amount")) / conversion_rate, precision)
+
+        by_row.setdefault(id(item), []).append({
+            # India Compliance sets `gst_tax_type` ("cgst"/"sgst"/"igst"/...) on
+            # the tax row. Authoritative metadata, so no account-name substring
+            # guessing -- and absent for non-GST charges, which stay generic
+            # rather than being mislabelled as GST.
+            "tax_type": (tax.get("gst_tax_type") or "").upper() or None,
+            "label": tax.description or None,
+            "rate": flt(detail.get("rate")),
+            "amount": amount,
+            "taxable_amount": taxable,
+            "included_in_print_rate": 1 if tax.get("included_in_print_rate") else 0,
+            "charge_type": tax.charge_type,
+            # Presentation order follows the transaction's own tax rows.
+            "idx": tax.idx,
+        })
+
+    for components in by_row.values():
+        components.sort(key=lambda c: c["idx"])
+
+    return by_row
+
+
+def build_pricing_projection(so, cart=None):
+    """The authoritative pricing RESULT for a cart, derived from the priced order.
+
+    One row per Sales Order line, paid and promotion alike, in ERPNext's own
+    order. This is what the storefront should render: the Cart child table holds
+    what the customer asked for, this holds what they will actually be charged.
+
+    Deliberately NOT keyed by `item_code`: a same-SKU promotion produces two rows
+    sharing one code, so any structure indexed on it collapses them -- the exact
+    defect this replaces. Identity is `item_code` + `pricing_rules` +
+    `is_free_item`, per Phase 23A.
+
+    `source_line_ids` exists so a future move to independent intent lines has
+    somewhere to record provenance. Today's Cart merges duplicate SKUs, so a paid
+    row maps to exactly one Cart child row and a promotion row to none.
+    """
+
+    # Paid row -> the Cart child row it came from. One entry today because the
+    # Cart merges duplicate SKUs; a list because a future independent-line Cart
+    # will map several.
+    cart_row_names = {}
+    if cart is not None:
+        for row in cart.items:
+            cart_row_names.setdefault(row.item_code, []).append(row.name)
+
+    taxes_by_row = extract_row_taxes(so)
+    precision = so.precision("tax_amount", "taxes")
+
+    projection = []
+
+    for idx, row in enumerate(so.items):
+        is_free = bool(row.get("is_free_item"))
+        rules = normalize_pricing_rules(row.get("pricing_rules"))
+
+        components = taxes_by_row.get(id(row), [])
+        tax_amount = flt(sum(c["amount"] for c in components), precision)
+
+        # net_amount, NOT amount. For an INCLUSIVE tax the row `amount` already
+        # contains the tax, so `amount + tax` would bill it twice (118 -> 136).
+        # `net_amount` is the taxable base under both treatments, so this is
+        # correct for inclusive and exclusive alike.
+        total_amount = flt(flt(row.net_amount) + tax_amount, precision)
+
+        projection.append({
+            # Positional, stable within one pricing result. Not a database id and
+            # not something a client may send back as authority.
+            "row_id": f"{idx}",
+            "line_role": "Promotion" if is_free else "Paid",
+            "is_free_item": 1 if is_free else 0,
+
+            "item_code": row.item_code,
+            "item_name": row.item_name,
+            "uom": row.uom,
+            "stock_uom": row.stock_uom,
+            "conversion_factor": row.conversion_factor,
+            "qty": row.qty,
+            "stock_qty": row.stock_qty,
+
+            "base_price": row.price_list_rate,
+            "rate": row.rate,
+            "discount_percentage": row.discount_percentage,
+            "discount_amount": row.discount_amount,
+            "amount": row.amount,
+            "net_amount": row.net_amount,
+
+            # Authoritative row tax from the SAME final calculation that produced
+            # the totals. A promotion row carries its own tax; it is never assumed
+            # to be zero, and never inherits its paid row's.
+            "tax_amount": tax_amount,
+            "total_amount": total_amount,
+            "tax_components": [
+                {k: v for k, v in c.items() if k != "idx"} for c in components
+            ],
+
+            "pricing_rules": rules,
+            "source_line_ids": cart_row_names.get(row.item_code, []) if not is_free else [],
+        })
+
+    return projection
 
 
 # =========================================================

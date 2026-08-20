@@ -51,6 +51,18 @@ from yob_core.api.response import (  # noqa: F401  (re-exported API)
 CATEGORY_NOT_FOUND = "category_not_found"
 ITEM_NOT_FOUND = "item_not_found"
 
+# Catalog listing (get_items). Every one is a client-fixable request problem, so
+# each is 422 with the offending field named -- none of them is a server fault.
+# `scope_type` values other than `category` are reserved, not broken: they answer
+# `unsupported_scope` so a client cannot reach an unfinished feature by guessing.
+UNSUPPORTED_SCOPE = "unsupported_scope"
+UNSUPPORTED_FILTERS = "unsupported_filters"
+UNSUPPORTED_SORT = "unsupported_sort"
+PAGE_SIZE_INVALID = "page_size_invalid"
+CURSOR_INVALID = "cursor_invalid"
+SEARCH_TOO_LONG = "search_too_long"
+CATEGORY_NOT_LISTABLE = "category_not_listable"
+
 # Cart
 CART_NOT_FOUND = "cart_not_found"
 CART_EMPTY = "cart_empty"

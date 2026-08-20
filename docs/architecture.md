@@ -258,15 +258,21 @@ Flow:
 
 Endpoint:
 
-- `get_category(slug, qty=1)`
+- `get_category(slug)`
 
 Flow:
 
 1. Requires logged-in Customer.
 2. Loads active Category by slug.
 3. If the category is a group, returns active child categories.
-4. If the category is a leaf, loads active ERPNext Items where `custom_category` matches the Category.
-5. For every item, calls `get_item_pricing()` so the frontend receives customer-specific price, discount, tax, total, and pricing rule label.
+4. Returns category metadata. **No products.**
+
+Steps 4-5 previously loaded every Item in a leaf category and called
+`get_item_pricing()` for each one. That embedded product payload was retired in
+Phase 22B-3 — along with the `items` field, `meta.item_count` and the `qty`
+parameter, which existed only to price it. All product listing now belongs to
+`get_items(scope_type, scope_value, search, sort, page_size, cursor, qty)`, which is
+bounded, cursor-paginated and isolates per-item failures. See `docs/context.md`.
 
 ### Get Single Item
 

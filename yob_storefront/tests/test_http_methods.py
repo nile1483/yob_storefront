@@ -20,6 +20,9 @@ import frappe
 READ_ONLY = {
     "address.get_contacts", "address.get_addresses", "address.get_contact_for_customer",
     "cart.get_cart", "catalog.get_categories", "catalog.get_category", "catalog.get_item",
+    # Bounded catalog listing (Phase 22B-1). A read: it prices into a throwaway
+    # in-memory Sales Order that is never inserted, exactly as get_category does.
+    "catalog.get_items",
     "cms.get_config", "order.get_orders", "order.get_order_details",
     "payment.get_checkout_data", "payment_method.get_payment_methods",
 }
