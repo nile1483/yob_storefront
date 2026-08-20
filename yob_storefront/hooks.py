@@ -188,6 +188,9 @@ doc_events = {
     # ---------------- ITEM ----------------
 
     "Item": {
+        # A public slug addresses exactly one product. Enforced here rather than
+        # by a unique index: unslugged Items all store the same empty string.
+        "validate": "yob_storefront.utils.item_slug.validate_unique_slug",
         "on_update": "yob_storefront.utils.cache.clear_item_cache",
         "after_insert": "yob_storefront.utils.cache.clear_item_cache",
         "on_trash": "yob_storefront.utils.cache.clear_item_cache"

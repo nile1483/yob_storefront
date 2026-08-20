@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 yob_storefront.patches.v1_0.rename_yob_module_to_yob_storefront
 yob_storefront.patches.v1_0.map_payment_methods_to_gateways
+yob_storefront.patches.v1_0.stop_copying_item_slug_to_variants

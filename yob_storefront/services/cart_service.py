@@ -75,14 +75,22 @@ def build_cart_response(cart, removed_items=None, price_updated_items=None):
             "pincode": addr.pincode,
         }
 
+    # ADDITIVE reconciliation list. A line whose UNIT meaning moved -- the
+    # merchant edited the Item's conversion factor, or dropped the UOM the row was
+    # priced in -- must never change quietly: "2" was chosen as 2 Boxes and the
+    # buyer has to be told if it is now worth something else. Empty in normal
+    # operation.
+    uom_changed_items = cart.flags.get("uom_changed_items") or []
+
     return {
         "cart": cart_dict,
         "contact": contact_data,
         "billing_address": billing_address_data,
         "shipping_address": shipping_address_data,
-        "cart_updated": bool(removed_items or price_updated_items),
+        "cart_updated": bool(removed_items or price_updated_items or uom_changed_items),
         "removed_items": removed_items or [],
         "price_updated_items": price_updated_items or [],
+        "uom_changed_items": uom_changed_items,
     }
     
 def get_available_payment_methods(customer, company, order_amount):

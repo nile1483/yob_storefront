@@ -56,10 +56,114 @@ No body. Requires CSRF.
 | `catalog.get_categories` | GET | `parent_slug` (optional) |
 | `catalog.get_category` | GET | `slug`, `qty` (default 1) |
 | `catalog.get_item` | GET | `slug`, `qty` (default 1) |
+| `catalog.resolve_variant` | GET | `template`, `attributes` (JSON object), `qty` (default 1) |
 | `cms.get_config` | GET | — |
 
 `qty` exists because pricing is quantity-dependent — the server returns the
 price *for that quantity*, including any quantity-break pricing rule.
+
+**Units — read these, never compute them.** `catalog.get_item` and
+`catalog.get_items` price in the **selling UOM ERPNext resolves** for the item
+(`sales_uom` when the merchant set one, otherwise the stock UOM). The buyer never
+picks a unit and never sends one; they send quantity only.
+
+| Field | Meaning | Example |
+|---|---|---|
+| `uom` | what the buyer's quantity is counted in — **show it beside the quantity** | `Strip` |
+| `stock_uom` | what stock is counted in | `Nos` |
+| `conversion_factor` | ERPNext's factor between them | `10` |
+| `stock_qty` | this quantity in stock units | `20` |
+
+So a quantity of `2` renders as **"2 Strips"**, and `rate` is per Strip. Do **not**
+multiply, divide or convert anything client-side: if you need "2 Strips (20 Nos)",
+use `stock_qty`. `catalog.get_items` rows carry `uom` and `conversion_factor`
+alongside `stock_uom` for the same reason — a card showing only `stock_uom` would
+label a per-Strip price as per-Nos.
+
+### Variant families
+
+A product URL addresses a **simple Item** or a **variant family (Item Template)** —
+never an individual variant. Variants have no public slug; a buyer reaches one by
+choosing attributes on the family page and the **server** resolves the SKU.
+
+`catalog.get_item` answers one of two shapes, told apart by `is_template`:
+
+```jsonc
+// is_template: 1  — a family. NO price fields at all.
+{
+  "name": "TSHIRT", "item_name": "...", "custom_slug": "tshirt", "image": null,
+  "is_template": 1, "is_purchasable": 0, "variant_of": null,
+  "attributes": [                       // template order; render in this order
+    {"attribute": "Colour", "numeric": 0, "values": ["Red", "Blue"]},
+    {"attribute": "Size",   "numeric": 0, "values": ["Medium", "Large"]}
+  ],
+  "variants": [                         // ACTUAL combinations, nothing else
+    {"item_code": "TSHIRT-RED-M", "attributes": {"Colour": "Red", "Size": "Medium"}},
+    {"item_code": "TSHIRT-BLU-L", "attributes": {"Colour": "Blue", "Size": "Large"}}
+  ]
+}
+```
+
+**`variants[]` is the truth about what can be bought.** `attributes[].values` exists
+to render controls; it is **not** a grid. Red/M and Blue/L existing does **not** make
+Red/L real — show any pair missing from `variants[]` as **disabled**, never as a
+choice. `values` are already in the merchant's own order (S, M, L), so do not sort
+them. Never build an item code from attribute values: SKU naming is ERPNext's.
+
+**`catalog.resolve_variant(template, attributes, qty)`** turns a completed selection
+into the actual variant and returns **the same payload as a simple product page**
+(plus `variant_of` and `selected`), so one renderer serves both.
+
+```
+GET /api/method/yob_storefront.api.catalog.resolve_variant
+      ?template=TEE
+      &attributes=%7B%22Colour%22%3A%22Orange%22%2C%22Size%22%3A%22Medium%22%7D
+      &qty=1
+```
+
+`template` is the family's `data.name`. `attributes` is a **JSON object,
+URL-encoded into the query string**, holding **every** attribute the family
+defines — a subset answers `variant_attributes_required`. `qty` defaults to `1`
+and simply reprices the preview; it is not a cart operation. `selected` in the
+response is read from the variant's stored rows, so it is safe to trust over what
+you sent. Nothing is stored server-side: re-anchoring, clearing and re-choosing
+attributes needs no session state, and only a complete selection is ever resolved.
+
+| Answer | Meaning |
+|---|---|
+| `data` | resolved: use `data.name` as the `item_code` for `add_to_cart` |
+| `variant_attributes_required` (422) | not every attribute chosen yet |
+| `variant_not_available` (422) | that combination has no salable variant |
+| `variant_family_unsupported` (422, from `get_item`) | Manufacturer-based family; not configurable online |
+
+`add_to_cart` still takes **`item_code` + `qty` only**. A family's own code is refused
+with `item_is_template` (422) — a family is never buyable.
+
+**Listing.** `catalog.get_items` returns one card per simple Item and **one card per
+family**, never one per variant. Every card carries `has_variants` and `price_state`:
+
+| `price_state` | Meaning | Render |
+|---|---|---|
+| `priced` | a simple Item; all money fields populated | price as today |
+| `select_options` | a family; **all money fields are `null`** | "Select options" — never invent a price |
+
+ERPNext cannot price a template, and quoting one variant's rate would show a number
+no buyer is charged, so a family card deliberately carries no money.
+
+**Stock fields on `catalog.get_item`** — `is_stock_item`, `warehouse`,
+`actual_qty`. `actual_qty` is in **`stock_uom`, never converted to the selling
+unit** — price per Strip and availability in Nos are two different facts. It is
+**three-valued and must be rendered as such**:
+
+| Value | Meaning | Render as |
+|---|---|---|
+| `null` | quantity does not apply (`is_stock_item = 0`) or no warehouse resolved | nothing / "availability not tracked" |
+| `0` | a real answer: none in stock | "out of stock" |
+| `n` | quantity in the warehouse this order would draw on | the number |
+
+**`null` must never be shown as "out of stock".** `warehouse` is returned for
+transparency only; it is server-resolved per transaction and the buyer cannot
+choose or send one.
 
 **Category object:** `name`, `category_name`, `slug`, `parent_category`,
 `display_order`, `thumbnail`, `banner`, `meta_title`, `meta_description`.
@@ -69,6 +173,12 @@ price *for that quantity*, including any quantity-break pricing rule.
 `default_price_list`, `company`, `store_domain`, `store_logo`,
 `default_terms_page`, `default_privacy_page`, `allow_guest_purchase`,
 `default_warehouse`, `allowed_payment_modes`.
+
+> **`default_warehouse` is inert — do not use it.** The backend resolves the
+> warehouse for every transaction through ERPNext itself, and no pricing, cart,
+> order or stock-availability path reads this field. There is no buyer-facing
+> warehouse concept: no endpoint accepts a warehouse, and the Cart stores none.
+> It is returned for compatibility only.
 
 > **Known quirk — `allowed_payment_modes` is always `[]`.** The backend reads a
 > field named `allowed_payment_modes` while the DocType field is
@@ -113,15 +223,39 @@ These three shapes are genuinely different. Parse them separately, and treat
 `total_amount`, `pricing_rules`, `pricing_rule_apply_on`, `pricing_rule_label`,
 `item_expiry_date`, plus Frappe's `parent`/`parentfield`/`parenttype`.
 
+**`quantity` is counted in the row's own `uom`, and `rate` is per that unit.**
+The unit is the one ERPNext resolved when the line was first priced and it is then
+held steady for that line, so a merchant who later changes the item's selling UOM
+cannot change what an already-chosen quantity means. Render `quantity` with `uom`
+("2 Box"); `pricing_rows[]` carries `uom`, `conversion_factor` and ERPNext's
+`stock_qty` for the same line. A line added before a merchant's UOM change can
+therefore show a different unit from today's product page — that is deliberate,
+not drift.
+
 `data.contact`, `data.billing_address`, `data.shipping_address` are **resolved
 objects** (display strings, city, state, country, pincode) — not just ids.
 
 **Reconciliation fields** — `cart_updated` (boolean), `removed_items[]`,
-`price_updated_items[]`. The server silently removes items that became
+`price_updated_items[]`, `uom_changed_items[]`. `uom_changed_items[]` lists item
+codes whose **unit meaning** moved — the merchant edited the item's conversion
+factor, or removed the UOM the line was priced in — so "2" is now worth something
+different. Empty in normal operation; when it is not, tell the user explicitly. The server silently removes items that became
 unavailable and re-prices the rest on every read. If `cart_updated` is true,
 tell the user what changed.
 
 ### `POST cart.add_to_cart`
+
+**Takes `item_code` and `qty`. Nothing else** — no unit, no conversion factor, no
+warehouse, no price. `qty` is a **delta** added to any existing line for that SKU,
+counted in that line's `uom`.
+
+**`cart_item_uom_changed` (409).** If the merchant changed the item's selling unit
+after the line was priced, the quantity you are sending (in today's unit) and the
+quantity on the line (in its own) do not mean the same thing, so the add is
+refused and **nothing changes**. `details` gives `item_code`, `existing_uom` and
+`current_uom`: tell the buyer the unit changed, and offer to remove the line so it
+can be added again — the new line picks up the current unit by itself. Never
+convert the quantity client-side, and do not retry the same call.
 
 ```json
 { "item_code": "ITEM-001", "qty": 2 }

@@ -234,6 +234,11 @@ Flow:
 2. If no cache exists, reads `YOB Store Settings`.
 3. Converts store logo to a full URL.
 4. Returns company, store name, domain, currency, price list, warehouse, policy pages, guest purchase flag, and configured payment modes.
+
+`default_warehouse` is echoed here and **nowhere else**: no pricing, cart, order
+or availability path reads it. Warehouse is resolved by ERPNext per transaction
+(see `docs/context.md`, "Warehouse and transaction context"). The field remains in
+the response for compatibility only.
 5. Caches the response for one hour.
 
 ## Catalog Flow
@@ -346,9 +351,19 @@ Function:
 Flow:
 
 1. Copies total quantity, net total, tax total, grand total, coupon discount, and total discount to Cart.
-2. For each Sales Order item, finds the matching Cart Item.
-3. Copies base price, rate, discount, amount, tax, total amount, pricing rule list, pricing rule label, and pricing rule apply-on field.
-4. Tax per item is estimated by proportional allocation using item net amount divided by total net amount.
+2. For each **paid** Sales Order item (`is_free_item` rows are skipped — they are
+   pricing output, never buyer intent), finds the matching Cart Item.
+3. Records the unit ERPNext resolved for that line — `uom`, `conversion_factor`,
+   `stock_uom` — so the buyer's quantity keeps one meaning on every later reprice
+   (Phase 23B-5U). A conversion factor that has moved since the line was created
+   is reported through `uom_changed_items`, never applied silently.
+4. Copies base price, rate, discount, amount, tax, total amount, pricing rule list, pricing rule label, and pricing rule apply-on field.
+5. `Cart Item.tax_amount` is a NON-AUTHORITATIVE snapshot, allocated
+   proportionally by net amount. Authoritative per-row tax lives on
+   `cart.pricing_rows`, built from ERPNext's own item-wise tax details
+   (Phase 23B-3), and the Cart totals remain the document totals.
+6. Returns the pricing projection (`cart.pricing_rows`): one row per Sales Order
+   line, paid and promotion alike.
 
 ## Cart Flow
 

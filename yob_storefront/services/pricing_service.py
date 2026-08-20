@@ -170,7 +170,22 @@ def get_item_pricing(
         "pricing_rule_label": pricing_rule_label,
         "pricing_rule_apply_on": pricing_rule_apply_on,
 
-        "uom": row.uom
+        # The unit this price is PER, decided by ERPNext (`sales_uom` when the
+        # Item has one, else `stock_uom`), plus the two values that let a client
+        # LABEL the transaction without computing anything:
+        #
+        #   uom               what the buyer's quantity is counted in  -- "Strip"
+        #   stock_uom         what stock is counted in                 -- "Nos"
+        #   conversion_factor ERPNext's factor between them            -- 10
+        #   stock_qty         this quantity in stock units             -- 20
+        #
+        # Availability (`actual_qty`) stays in stock units and is never converted
+        # here. A storefront must show "2 Strips" and "125 Nos available" as the
+        # two different facts they are.
+        "uom": row.uom,
+        "stock_uom": row.stock_uom,
+        "conversion_factor": row.conversion_factor,
+        "stock_qty": row.stock_qty,
     }
 
 
@@ -231,13 +246,8 @@ def calculate_cart_using_sales_order(cart, customer_doc):
     so.shipping_address_name = cart.shipping_address
 
     for row in cart.items:
-       
-        so.append("items", {
-            "item_code": row.item_code,
-            "qty": row.quantity,
-            "uom": row.uom or row.stock_uom,
-            "stock_uom": row.stock_uom or row.uom,
-        })
+
+        so.append("items", cart_row_to_order_item(row))
 
     # Same targeted elevation as get_item_pricing, and for the same reason:
     # `so.customer` came from `cart.customer`, and the cart was loaded via the
@@ -261,10 +271,57 @@ def calculate_cart_using_sales_order(cart, customer_doc):
 
 
 # =========================================================
+# CART ROW -> SALES ORDER ROW
+# =========================================================
+
+def cart_row_to_order_item(row):
+    """One Cart line as ERPNext should receive it. Used for pricing AND commitment.
+
+    ## UOM
+
+    A Cart row carries the selling unit ERPNext ITSELF resolved the first time the
+    line was priced (`sales_uom` when the Item has one, else `stock_uom`), written
+    back by `sync_sales_order_to_cart`. Passing it here is what keeps the buyer's
+    quantity meaning ONE thing: "2" stays 2 Strips from the product page through
+    the Cart to the Sales Order, and a merchant who later changes the Item's
+    `sales_uom` cannot silently reinterpret a quantity someone already chose.
+
+    An UNPRICED row -- a line just appended by `add_to_cart` -- has no uom, and
+    then nothing is sent, so ERPNext resolves it. That absence is the fix: the old
+    code sent `row.uom or row.stock_uom`, which meant the stock UOM was forced
+    even when the Item sold in Boxes, and the Cart charged the per-Nos rate for a
+    quantity the product page had priced per Box (Phase 23B-5W).
+
+    ## Conversion factor
+
+    Never sent. ERPNext derives it from the Item's own UOM table on every
+    calculation (`get_conversion_factor`), so a corrected conversion factor
+    reaches an existing cart instead of being frozen into it. `stock_qty` follows
+    from `qty * conversion_factor`, which is what Pricing Rules compare against.
+    """
+
+    item = {
+        "item_code": row.item_code,
+        "qty": row.quantity,
+    }
+
+    if row.uom:
+        item["uom"] = row.uom
+
+    return item
+
+
+# =========================================================
 # 3️⃣ SYNC SALES ORDER BACK TO CART
 # =========================================================
 
 def sync_sales_order_to_cart(cart, so):
+
+    # Lines whose UNIT meaning moved under the buyer -- a merchant edited the
+    # Item's conversion factor, or removed the UOM the row was priced in. Rare,
+    # and never silent: reported through the Cart response so the buyer can be
+    # told that "2" is now worth something different.
+    uom_changed = []
 
     # -----------------------------
     # Cart Totals
@@ -305,6 +362,36 @@ def sync_sales_order_to_cart(cart, so):
 
         if not cart_row:
             continue
+
+        # -----------------------------
+        # Unit of measure -- ERPNext's answer, recorded as the row's meaning
+        # -----------------------------
+        # The first pricing of a row is where the selling unit is decided
+        # (`sales_uom` or `stock_uom`, chosen by ERPNext), and writing it here is
+        # what turns that answer into stable buyer intent: every later reprice
+        # sends this value back, so the quantity keeps meaning what it meant when
+        # the buyer chose it.
+        #
+        # The conversion factor is stored as ERPNext's CURRENT derivation and is
+        # never sent back to it. When that derivation moves -- the merchant edited
+        # the Item's conversion table, or dropped the UOM the row was priced in --
+        # what the stored quantity is WORTH has changed, so the line is reported
+        # instead of quietly repricing. An unpriced row (no uom, or a factor of 0
+        # from before this field was written) has no previous meaning to protect.
+        was_priced = bool(cart_row.uom)
+        previous_factor = flt(cart_row.conversion_factor)
+
+        unit_moved = was_priced and (
+            (so_row.uom and so_row.uom != cart_row.uom)
+            or (previous_factor and previous_factor != flt(so_row.conversion_factor))
+        )
+
+        if unit_moved:
+            uom_changed.append(cart_row.item_code)
+
+        cart_row.uom = so_row.uom
+        cart_row.stock_uom = so_row.stock_uom or cart_row.stock_uom
+        cart_row.conversion_factor = so_row.conversion_factor
 
         # -----------------------------
         # Pricing
@@ -363,6 +450,8 @@ def sync_sales_order_to_cart(cart, so):
         else:
             cart_row.pricing_rule_label = None
             cart_row.pricing_rule_apply_on = None
+
+    cart.flags.uom_changed_items = sorted(set(uom_changed))
 
     return build_pricing_projection(so, cart)
 
@@ -886,6 +975,14 @@ def validate_item_saleable(item_code):
 
     if item.disabled:
         frappe.throw(f"Item {item_code} is disabled")
+
+    # A template is a FAMILY, not a product. ERPNext refuses to price one
+    # ("please select one of its variants") and refuses an Item Price on it, so
+    # the only question is where the refusal happens. Answering here keeps it a
+    # storefront validation error instead of an exception surfacing from deep
+    # inside ERPNext as an unexpected fault (Phase 24A reproduced that as a 500).
+    if item.has_variants:
+        frappe.throw(f"Item {item_code} is a template; select one of its variants")
 
     if not item.is_sales_item:
         frappe.throw(f"Item {item_code} is not marked as sales item")

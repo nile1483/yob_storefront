@@ -158,15 +158,17 @@ def create_sales_order_from_cart(cart):
     # -----------------------------------------------------
     # Items
     # -----------------------------------------------------
+    # The SAME row builder the pricing order uses, so the committed order cannot
+    # be built on a different unit from the one the buyer was quoted. It sends the
+    # UOM ERPNext resolved for this line and never a conversion factor: ERPNext
+    # re-derives that, and `stock_qty` with it.
+    from yob_storefront.services.pricing_service import cart_row_to_order_item
+
     for row in cart.items:
-        so.append("items", {
-            "item_code": row.item_code,
-            "qty": row.quantity,
-            "uom": row.uom or row.stock_uom,
-            "stock_uom": row.stock_uom or row.uom,
-            "rate": row.rate,
-            "delivery_date": today(),
-        })
+        item = cart_row_to_order_item(row)
+        item["rate"] = row.rate
+        item["delivery_date"] = today()
+        so.append("items", item)
 
     # -----------------------------------------------------
     # ERPNext Pricing Engine

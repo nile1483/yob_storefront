@@ -404,6 +404,383 @@ label -- numerically correct and never mislabelled as GST.
 * **Cart summary remains the document total**, not a sum of row totals: documents
   carry rounding, additional discount and document-level charges.
 
+## Warehouse and transaction context (Phase 23B-5W)
+
+### The rule
+
+> **Warehouse is trusted server/ERPNext-derived transaction context. The
+> storefront buyer cannot select or control warehouse. YOB supplies a
+> server-side default only if ERPNext requires one and cannot derive one.**
+
+Buyer warehouse selection is **not** a deferred YOB feature and is not planned.
+It is not on the deferred list beside selectable UOM, per-line duplicate-SKU
+intent, per-line expiry and multi-currency; there is nothing here to defer.
+
+Today ERPNext derives a warehouse on every bench we run, so YOB supplies none at
+all -- the "server-side default" clause above is a contingency, not current
+behaviour.
+
+### The one resolution path
+
+```text
+get_item_details -> get_basic_details -> get_item_warehouse_
+
+  Sales Order `set_warehouse`
+    -> Item Default (per company)
+      -> Item Group default
+        -> Brand default
+          -> the row's own warehouse
+            -> Stock Settings default (only if it belongs to the same company)
+```
+
+Every storefront surface goes through it, and none of them reimplements it:
+
+| Surface | How it gets the warehouse |
+| --- | --- |
+| Product preview | the temporary Sales Order's own row, after `set_missing_values()` |
+| Cart pricing | the full-cart temporary Sales Order's row, same call |
+| Draft Sales Order | the committed order's row, same call |
+| Displayed stock | `SellingContext.resolved_warehouse()`, which ASKS `get_item_details` |
+
+The rows YOB builds carry no `warehouse` and no `set_warehouse`; ERPNext fills
+them in. `services/pricing_service.py` and `services/order_service.py` contain
+neither string, asserted by test.
+
+**Verified on `test.localhost`:** all four resolve `Stores - ST` for the seeded
+stock item, and an item pointed at a different warehouse moves all four together.
+Quantity does not affect it (preview prices qty 1, the cart prices the buyer's
+quantity).
+
+### `YOB Store Settings.default_warehouse` is inert
+
+The field exists and `cms.get_config` publishes it, but **no pricing, cart, order
+or availability path reads it**. Pointing it elsewhere changes nothing, which is
+pinned behaviourally rather than by a source scan. It is a published response
+field, so it stays for compatibility; it must never become a warehouse authority
+beside ERPNext's own.
+
+### Availability is three-valued
+
+| Value | Meaning |
+| --- | --- |
+| `None` | does not apply (non-stock) or unknown (ERPNext resolved no warehouse) |
+| `0.0` | a real answer: we have none |
+| `n` | the quantity in the warehouse this transaction would draw on |
+
+`None` must never be rendered as "out of stock". A variant reports its **own**
+SKU (never its template's), and a template with variants is not transactable, so
+ERPNext declines to describe it and quantity is `None`.
+
+> **Fixed in 23B-5W.** The quantity is now read with ERPNext's own
+> `get_bin_details(item_code, warehouse, include_child_warehouses=True)` -- the
+> call its Sales Order line makes. A raw `Bin` read was wrong whenever ERPNext
+> resolved a **group** warehouse: the order line reported the aggregate of the
+> group's children while the product page showed 0 for the same warehouse
+> (reproduced: ERPNext 9, storefront 0). For a leaf warehouse
+> `get_child_warehouses()` returns just that warehouse, so the ordinary case is
+> unchanged. This decides no precedence; it only reads the warehouse ERPNext
+> already chose.
+
+### When ERPNext genuinely requires one
+
+A stock line with no resolvable warehouse fails at Sales Order **validate**
+(`SalesOrder.validate_warehouse` -> `WarehouseRequired`). Preview and cart
+pricing are in-memory and never validated, so browsing and pricing still work and
+availability reports `None`; the **commitment refuses**, leaving no Sales Order
+and the Cart still `Draft`.
+
+YOB deliberately does not invent a warehouse to fill that gap. Any value it chose
+would be a second precedence chain, and shipping from a warehouse the merchant
+never nominated is worse than refusing. The fix is merchant configuration -- an
+Item, Item Group, Brand or Stock Settings default.
+
+### Preview vs Cart: one transaction, two builders
+
+The preview and the cart do not share one `SellingContext` INSTANCE -- the
+preview builds from `YOB Store Settings` plus `get_price_list_for_customer()`,
+the cart goes through `context_for()`. What matters is whether they can ANSWER
+differently, so each dimension is compared on the finished orders:
+
+| Dimension | Can they diverge? |
+| --- | --- |
+| customer | No -- the cart is looked up by the same authenticated Customer |
+| company / currency | Not today. Both come from `YOB Store Settings`; the cart prefers its own stored value, which `get_or_create_cart` wrote from the same settings. Nothing re-resolves them later, so a store that changed company or currency would leave old carts behind -- bounded by the single-company, single-currency storefront and the deferred multi-currency boundary |
+| transaction date | No -- both `today()` |
+| price list | No -- one resolver, re-resolved and written back on every reprice (23B-1) |
+| fallback price list | No -- both leave it to ERPNext and Selling Settings |
+| warehouse | No -- ERPNext resolves it in both, asserted above |
+| UOM | No -- ERPNext resolves the selling UOM in both, and the Cart records rather than dictates it (23B-5U, below) |
+
+### Selling UOM (fixed in Phase 23B-5U)
+
+23B-5W reproduced this: Item `sales_uom = Box`, factor 10, Item Price 100/Nos --
+the product page quoted **1000 per Box** while the Cart and Draft Sales Order
+charged **100 per Nos** for the same buyer input.
+
+**Root cause.** `add_to_cart` wrote `uom = stock_uom` (and
+`conversion_factor = 1`) onto the Cart row, and both
+`calculate_cart_using_sales_order` and `create_sales_order_from_cart` passed
+`row.uom or row.stock_uom` back to ERPNext. With a UOM already in context,
+`get_basic_details` has no decision left to make -- YOB had overridden it.
+
+**What replaces it.** Nothing in YOB derives a unit:
+
+```text
+add_to_cart        appends a row with NO uom and NO conversion_factor
+  -> reprice       ERPNext resolves `sales_uom or stock_uom` itself
+  -> sync          the resolved uom / conversion_factor / stock_uom are RECORDED
+  -> later prices  that recorded unit is sent back, so the meaning holds
+```
+
+`cart_row_to_order_item()` builds the row for **both** the pricing order and the
+committed order, so they cannot be built on different units. It sends the unit
+only when the row already has one, and **never sends a conversion factor** --
+ERPNext re-derives that from the Item's UOM table on every calculation, and
+`stock_qty = qty * conversion_factor` with it.
+
+| Fact | Who decides |
+| --- | --- |
+| selling UOM of a new line | ERPNext (`sales_uom or stock_uom`) |
+| selling UOM of an existing line | recorded ERPNext answer, held steady |
+| conversion factor | ERPNext, re-derived every reprice |
+| `stock_qty` | ERPNext (`qty * conversion_factor`) |
+| Pricing Rule min/max qty | ERPNext, against `stock_qty` |
+| free-item unit | ERPNext (`pricing_rule.free_item_uom or stock_uom`) |
+| quantity | **the buyer** |
+
+The buyer sends quantity and nothing else. No storefront endpoint accepts `uom`,
+`conversion_factor`, `stock_qty`, `warehouse`, `price_list` or `rate`, asserted
+by an endpoint scan.
+
+### Verified behaviour
+
+* **Box, factor 10, 100/Nos** -- preview, Cart intent, cart pricing order and
+  Draft Sales Order all read `Box`, factor 10, `stock_qty = qty * 10`, 1000 per
+  Box. Two Boxes = 2000, Cart == Draft Sales Order.
+* **No `sales_uom`** -- everything resolves to the stock UOM, factor 1.
+* **Item Price in the stock UOM** -- ERPNext multiplies by the factor (100/Nos
+  becomes 1000/Box).
+* **Item Price in the selling UOM** -- the exact-UOM price wins as-is (900/Box
+  beats the converted 1000).
+* **Pricing Rules** -- a `min_qty = 10` rule fires on ONE Box, because ERPNext
+  compares `stock_qty`; a `min_qty = 11` rule does not.
+* **Variants** -- a variant sells in its own `sales_uom`, priced on its own SKU.
+* **Promotions** -- the free row uses `free_item_uom or stock_uom`, which is
+  ERPNext's rule, so a same-SKU promotion on a Box item arrives in **Nos** unless
+  the Pricing Rule says `free_item_uom = Box`. YOB does not override it: forcing
+  the paid row's unit onto a free row would invent a quantity ERPNext never
+  granted. Merchants who intend "buy 2 Boxes get 1 Box" must set
+  `free_item_uom` on the rule.
+* **Stock availability is NOT converted.** Price per Box, availability in Nos:
+  `actual_qty` stays in stock units and is labelled with `stock_uom`. Responses
+  carry `uom`, `stock_uom`, `conversion_factor` and `stock_qty` so a client
+  renders "2 Strips" and "125 Nos available" without arithmetic of its own.
+
+### An existing Cart when the merchant changes the unit
+
+A stored quantity must never quietly come to mean something else, so the
+recorded unit is what the row keeps:
+
+| Merchant action | Existing Cart line | Reported |
+| --- | --- | --- |
+| changes `sales_uom` Box -> Nos | stays **2 Box**, still 2000 | nothing changed |
+| edits the Box factor 10 -> 12 | stays 2 Box, ERPNext reprices to 1200/Box | `uom_changed_items` |
+| deletes the Box conversion | ERPNext values a Box at 1 stock unit, as it does for any Desk-entered draft in that state | `uom_changed_items` |
+
+New shoppers immediately get the merchant's new unit; only the already-chosen
+line holds its own. `uom_changed_items` is an additive Cart-response list and is
+empty in normal operation; `cart_updated` becomes true when it is not.
+
+Because `uom` and `conversion_factor` are part of the payment fingerprint, a unit
+change under a live checkout link answers `payment_request_stale` and refuses the
+commitment rather than billing a different quantity meaning.
+
+### The Add-to-Cart merge guard (Phase 23B-5U-1)
+
+> **A Cart line keeps the ERPNext selling UOM established when that buyer intent
+> was first priced. If the merchant later changes the item's authoritative
+> selling UOM, YOB does not reinterpret or convert the existing quantity. A
+> subsequent Add-to-Cart for that SKU is rejected until the existing line is
+> removed and re-added.**
+
+This is an INTEGRITY rule, not a UOM-selection feature. The buyer still never
+chooses a unit; ERPNext decides it on the fresh line.
+
+The case it closes: a line holding `2 Nos`, a merchant who switches the item to
+`Box` (1 Box = 10 Nos), and a buyer who then types `2` on a product page that now
+reads Boxes. Merging would file 2 Boxes as 2 Nos.
+
+```text
+add_to_cart finds an existing line for this SKU
+  -> SellingContext.resolved_selling_uom(item)   <- ERPNext, same call the order uses
+  -> same as the line's recorded uom ?  merge the quantity
+  -> different ?                        409 cart_item_uom_changed, NOTHING mutated
+```
+
+Every other answer was rejected on purpose: converting rewrites intent the buyer
+already gave, a second row would need duplicate-SKU carts (not in this
+architecture), and silently merging is the defect itself.
+
+`details` carries `item_code`, `existing_uom` and `current_uom` -- display
+metadata only, no server internals. A line with no recorded unit has not been
+priced yet and has nothing to protect; ERPNext declining to describe the item
+means "no comparison possible", never a mismatch.
+
+Rows created before 23B-5U already carry `uom = stock_uom`, so they keep exactly
+the meaning they were created with. No patch reinterprets them, by design.
+
+## Address changes and pricing freshness (Phase 23B-5W)
+
+`set_cart_billing_address` and `set_cart_shipping_address` save the link and do
+**not** reprice. Jurisdiction can decide the tax template, so the guarantee that
+matters is that no stale financial state reaches a commitment. It holds by two
+independent mechanisms, neither of them the setter:
+
+1. **Issuance.** `proceed_to_payment` reprices under the Cart row lock and issues
+   the Payment Request against that recalculated state. A deliberately corrupted
+   stored total does not survive it.
+2. **Commitment.** `ensure_payment_request_committed` re-reads and re-prices the
+   Cart in memory (`validate_payment_request_source_current`) and compares a
+   fingerprint that includes `billing_address`, `shipping_address` and
+   `contact_person` as well as the money. An address changed after issuance
+   answers `payment_request_stale`; no Sales Order is created and the Cart stays
+   `Draft`. Re-running Proceed re-prices, re-issues and then commits the new
+   obligation.
+
+The buyer's own view refreshes on the next `get_cart`, which reprices and saves.
+An address change with no money change is still stale: a different delivery
+address is a different order.
+
+## Variant products (Phase 24A audit, Phase 24B build)
+
+Buyers choose **attributes and quantity**. Never a UOM, warehouse, conversion
+factor, price list, rate or SKU string. Once attributes resolve to an actual
+variant SKU, every Phase 23 guarantee applies unchanged — the same
+`SellingContext`, the same temporary Sales Order, the same Cart and Draft Sales
+Order paths. **There is no variant-pricing engine.**
+
+```text
+family slug -> catalog.get_item        -> attributes[] + variants[]   (NO price)
+buyer picks -> catalog.resolve_variant -> find_variant -> revalidate -> full detail
+            -> cart.add_to_cart(item_code, qty)        -> revalidated again
+```
+
+### What ERPNext provides (verified, `test_variant_catalog.py`)
+
+| Concept | Where it lives |
+| --- | --- |
+| family | `Item.has_variants = 1`, `variant_based_on` = `Item Attribute` \| `Manufacturer` |
+| selectable attributes | `Item Variant Attribute` rows on the TEMPLATE, in `idx` order, each possibly `numeric_values` |
+| attribute values | `Item Attribute Value` — **global to the attribute**, and an ORDERED child table |
+| an actual variant | `Item.variant_of = <template>` plus its own `Item Variant Attribute` rows |
+| attributes → SKU | `erpnext.controllers.item_variant.find_variant` |
+| SKU naming | `make_variant_item_code` — **never reproduced by YOB or a client** |
+
+* `find_variant` needs the COMPLETE attribute set; a partial set and a
+  never-generated combination both answer `None`.
+* **Attribute values are global**, so a cross-product lies: Red/M and Blue/L
+  existing does not make Red/L real. The matrix is built from actual variant rows.
+* A template **cannot carry an Item Price** and cannot be priced. There is no
+  family price to show before a selection.
+* A variant keeps the template's **stock** UOM (`allow_different_uom` off) but may
+  have its own `sales_uom`; price, stock and availability are per SKU.
+* Pricing Rules reach a variant four ways — own code, TEMPLATE code (ERPNext
+  matches through `variant_of`), Item Group, Brand — and a Product Discount may
+  grant a variant, in `free_item_uom or stock_uom`.
+
+### The contract
+
+**Family page** (`get_item` on a template slug) carries `is_template: 1`,
+`is_purchasable: 0`, `attributes[]` in template order with values **restricted to
+those occurring in salable variants**, and `variants[]` — one row per actual
+salable variant with its exact attribute map. No money fields exist on it.
+Values keep `Item Attribute Value` order, so sizes read S, M, L rather than
+alphabetically.
+
+**Resolution** (`resolve_variant(template, attributes, qty)`) answers the SAME
+payload as a simple product page plus `variant_of` and `selected`, so one
+serializer (`api/catalog.build_item_detail`) serves both and they cannot drift.
+`selected` is read from the resolved variant's stored rows, never echoed from the
+request. Errors: `variant_attributes_required` (incomplete),
+`variant_not_available` (no such salable combination — never resolved to a
+neighbour), `variant_family_unsupported` (Manufacturer-based).
+
+**Listing**: one card per simple Item and **one per family**, never one per
+variant. Every card declares `has_variants` and `price_state`
+(`priced` | `select_options`); a family card's money fields are all `null`. A
+family is listable when at least one of its variants is catalogue-eligible, tested
+with an early exit — no family card ever runs the pricing engine, and Phase 22B's
+cursor and page size are untouched.
+
+**Add to Cart** still takes `item_code` + `qty`. The code is revalidated
+server-side before anything is read or written: exists, `has_variants = 0`,
+enabled, `is_sales_item`, in life, and `variant_of` still pointing at a real
+family. A template answers `item_is_template` (422); an unsalable SKU answers
+`item_not_purchasable` (422). Neither ever becomes Cart intent.
+
+### Slugs
+
+A public slug addresses a **simple Item or a family**. Variants have none:
+`custom_slug` was `reqd` and listed in `Item Variant Settings`, so ERPNext copied
+the template's slug onto every variant and `get_item(slug)` answered with an
+arbitrary sibling (Phase 24A). Patch
+`v1_0.stop_copying_item_slug_to_variants` removes it from that list, drops `reqd`
+and clears any inherited copy; an `Item.validate` hook refuses a duplicate
+non-empty slug (a unique index cannot be used — unslugged Items all store the
+same empty string). The catalogue only lists rows that have a slug, so nothing
+unroutable is offered.
+
+### The published contract (Phase 24D-1)
+
+The canonical reference is `frontend-api-handoff/` — markdown, `openapi.json`
+(**3.3.0**), `postman_collection.json` and examples — mirrored into the Angular
+repo at `docs/api-handoff/` and `reference/api/`. Phase 24D-1 published what
+production actually does: `catalog.resolve_variant` (new), `catalog.get_item`'s
+two discriminated modes, `catalog.get_items` (which had shipped in Phase 22B
+without ever being documented), the Add-to-Cart SKU refusals, and the seven
+Phase 22B listing error codes that had never been published either.
+
+The OpenAPI examples are **captured from a real run**, not hand-written.
+
+`test_response_contract.TestPublishedApiReference` is the guard: every
+whitelisted endpoint must appear in `openapi.json`, the reference may not
+describe an endpoint that no longer exists, and every storefront error-code
+constant must appear in `ERROR-CODES.md`. It found the two gaps above on its
+first run.
+
+The wire, verified against production rather than assumed:
+
+```
+GET /api/method/yob_storefront.api.catalog.resolve_variant
+      ?template=TEE&attributes=<URL-encoded JSON>&qty=1
+```
+
+`attributes` arrives as a STRING and is parsed server-side; a mapping is accepted
+too. Malformed JSON answers `variant_attributes_required`, never a 500.
+
+### Re-anchoring needs no server state
+
+A client that clears an attribute made incompatible by another choice needs
+nothing from the server: the matrix is presentation guidance, the resolver only
+answers a COMPLETE selection, and Add to Cart revalidates the resolved SKU again.
+`variant_service` performs no write on any read path (asserted), and repeated
+partial selections leave nothing behind (asserted by record counts).
+
+### Manufacturer-based families are unsupported, by decision
+
+`variant_based_on = "Manufacturer"` distinguishes variants by manufacturer part
+number and has no attribute selector to render. YOB **fails closed**: such
+templates are excluded from the catalogue, their family page answers
+`variant_family_unsupported`, and `resolve_variant` refuses them. Nothing about
+Item Attribute families is weakened, and no semantics are invented for a mode the
+storefront cannot present.
+
+### Numeric attributes
+
+Offered exactly like any other: the values that OCCUR in generated variants. YOB
+never expands `from_range`/`to_range`/`increment` into combinations — ERPNext
+generates variants, YOB reports them.
+
 ## Owned DocTypes
 
 Known Storefront-owned DocTypes from the reviewed archive:

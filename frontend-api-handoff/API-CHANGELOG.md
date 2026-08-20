@@ -10,6 +10,73 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0a. Variant families: one page, one card, server-side resolution
+
+**OLD** — every ERPNext variant was listed as its own product card, and every
+variant carried its TEMPLATE's slug, so a product URL resolved to an arbitrary
+sibling. There was no attribute data anywhere.
+
+**CURRENT** —
+
+```
+catalog.get_items          one card per simple Item and one per FAMILY,
+                           never one per variant. New on every card:
+                           has_variants, price_state ("priced" | "select_options").
+                           A family card's money fields are all null.
+catalog.get_item           on a family slug returns is_template/is_purchasable,
+                           attributes[] and variants[] and NO price.
+catalog.resolve_variant    NEW. (template, attributes, qty) -> the full resolved
+                           product payload, same shape as a simple product page.
+cart.add_to_cart           unchanged signature; a template answers item_is_template
+                           (422) and an unsalable SKU item_not_purchasable (422).
+```
+
+**FRONTEND ACTION** — render a family page from `attributes[]`, disable any pair
+missing from `variants[]`, call `resolve_variant` for the chosen combination, then
+`add_to_cart(data.name, qty)`. Never build an item code, never cross attribute
+values, never sort `values` (they arrive in the merchant's order), and never show a
+price on a family card — use `price_state`.
+
+## 0. Prices and quantities are in the item's SELLING UOM
+
+**OLD** — the product page priced in the item's selling UOM while the Cart and
+the Sales Order used the stock UOM. For an item sold in Boxes of 10 at ₹100/Nos
+the page said **₹1000 per Box** and the cart charged **₹100 per Nos** for the same
+input. Frontends that read `stock_uom` as "the unit" were reading the cart's side
+of that disagreement.
+
+**CURRENT** — one unit end to end, resolved by ERPNext (`sales_uom`, else
+`stock_uom`) and recorded on the cart line. `quantity` is counted in the line's
+`uom`; `rate` is per that unit. New response fields, all additive:
+
+```
+catalog.get_item     conversion_factor, stock_qty      (uom, stock_uom already existed)
+catalog.get_items    uom, conversion_factor            (stock_uom already existed)
+cart.get_cart        uom_changed_items[]               (reconciliation list)
+```
+
+**FRONTEND ACTION** — display `uom` beside every quantity ("2 Strips"), treat
+`rate`/`base_price` as per-`uom`, and never convert units yourself: use
+`stock_qty` when you need stock units and `actual_qty` (already in `stock_uom`)
+for availability. Surface `uom_changed_items[]` like `removed_items[]` — it means
+a stored quantity is now worth something different because the merchant changed
+the item's conversion factor.
+
+## 0b. `add_to_cart` can answer `cart_item_uom_changed` (409)
+
+**OLD** — `add_to_cart` always merged a repeat add into the existing line for that
+SKU.
+
+**CURRENT** — it still does, unless the merchant changed the item's selling unit
+after that line was priced. Then the quantity being sent and the quantity already
+stored are counted in different units, so the call is refused with
+`cart_item_uom_changed` and the cart is left exactly as it was. `details` carries
+`item_code`, `existing_uom`, `current_uom`.
+
+**FRONTEND ACTION** — surface it as "this item is now sold in <current_uom>",
+offer `remove_from_cart` followed by a fresh `add_to_cart`, and do not convert
+quantities or retry blindly.
+
 ## 1. Cart setters return an acknowledgement, not a Cart
 
 **OLD** — earlier docs did not pin the setter response shape; it was natural to

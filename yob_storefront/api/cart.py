@@ -3,9 +3,13 @@ from yob_core.api.boundary import yob_api
 from yob_storefront.api.response import (
     BILLING_ADDRESS_INVALID,
     BILLING_ADDRESS_REQUIRED,
+    CART_ITEM_UOM_CHANGED,
     CONTACT_INVALID,
+    ITEM_IS_TEMPLATE,
+    ITEM_NOT_PURCHASABLE,
     CONTACT_REQUIRED,
     COUPON_CODE_REQUIRED,
+    HTTP_CONFLICT,
     HTTP_NOT_FOUND,
     HTTP_UNPROCESSABLE,
     ITEM_NOT_FOUND,
@@ -137,11 +141,72 @@ def add_to_cart(item_code=None, qty=1, auth_context=None):
             )
 
         customer = get_storefront_customer(auth_context)
+
+        # ------------------------------------------------------------------
+        # THE SKU GATE -- before anything is read or written.
+        #
+        # Attributes are a SELECTION, resolved server-side; by the time a code
+        # reaches here it is a claim about what to buy, and the server checks it
+        # again rather than trusting the page that produced it. A template is the
+        # loud case: ERPNext refuses to price one, and without this the failure
+        # surfaced as a 500 with a logged traceback for what is really a bad
+        # request (Phase 24A).
+        # ------------------------------------------------------------------
+        refusal = _refuse_unpurchasable(item_code)
+
+        if refusal:
+            return refusal
+
         cart = get_or_create_cart(customer)
+
+        # Expiry BEFORE the row is added, never after. Appending first let
+        # `validate_cart_expiry` empty the cart -- including the row just added --
+        # and the endpoint still answered "Item added" over an empty cart, so the
+        # response and the stored state disagreed (Phase 24A).
+        validate_cart_expiry(cart)
 
         existing = next((row for row in cart.items if row.item_code == item_code), None)
 
         if existing:
+            # ------------------------------------------------------------------
+            # MERGE GUARD -- the unit the buyer just typed into vs the unit this
+            # line is counted in.
+            #
+            # A Cart line keeps the selling UOM ERPNext resolved when that intent
+            # was first priced (Phase 23B-5U). If the merchant has since changed
+            # the item's selling UOM, the product page now shows Boxes while this
+            # line still holds Nos -- and adding the buyer's "2" to it would file
+            # 2 Boxes as 2 Nos. There is no safe silent answer: converting would
+            # rewrite intent the buyer already gave, and a second row would need
+            # duplicate-SKU carts, which YOB does not have.
+            #
+            # So the add is refused and the client is told which two units are in
+            # play. The buyer removes the line and adds it again; they still never
+            # CHOOSE a unit -- ERPNext decides it on the fresh line.
+            #
+            # A line with no recorded unit has not been priced yet and has no
+            # meaning to protect. `resolved_selling_uom` returning None means
+            # ERPNext declined to describe the item, which is not a mismatch --
+            # the reprice below is what surfaces a genuinely unsellable item.
+            # ------------------------------------------------------------------
+            from yob_storefront.services.pricing_context import context_for
+
+            current_uom = context_for(customer).resolved_selling_uom(item_code)
+
+            if existing.uom and current_uom and existing.uom != current_uom:
+                return error_response(
+                    CART_ITEM_UOM_CHANGED,
+                    "This item is now sold in a different unit. "
+                    "Remove it from your cart and add it again.",
+                    field="item_code",
+                    details={
+                        "item_code": item_code,
+                        "existing_uom": existing.uom,
+                        "current_uom": current_uom,
+                    },
+                    status_code=HTTP_CONFLICT,
+                )
+
             # INCREMENT, not replace: `qty` is a delta. Kept on ONE row per item
             # rather than appending a second row, because ERPNext evaluates a
             # Pricing Rule's min_qty/max_qty against the ROW's quantity -- two
@@ -155,20 +220,35 @@ def add_to_cart(item_code=None, qty=1, auth_context=None):
             existing.quantity = (existing.quantity or 0) + qty
         else:
             item = frappe.get_doc("Item", item_code)
+
+            # NO `uom` and NO `conversion_factor` here -- deliberately.
+            #
+            # This row used to be created with `uom = stock_uom` and
+            # `conversion_factor = 1`, and every later pricing call passed that
+            # value on. ERPNext then had no decision left to make: for an Item
+            # with `sales_uom = Box` (factor 10) the product page priced 1000 per
+            # Box while the Cart charged 100 per Nos for the same buyer input
+            # (Phase 23B-5W). The buyer's quantity meant two different things.
+            #
+            # ERPNext already answers this: with no uom in context and a selling
+            # doctype, `get_basic_details` uses `item.sales_uom or item.stock_uom`
+            # and derives the conversion factor from the Item's own UOM table.
+            # The reprice below therefore resolves both, and
+            # `sync_sales_order_to_cart` writes them onto this row -- so the unit
+            # a buyer's quantity is counted in is ERPNext's answer, recorded, and
+            # then held steady for the life of the row.
+            #
+            # `stock_uom` is a plain fact about the Item, not a resolution, and it
+            # is kept so the row can be labelled before it is first priced.
             cart.append("items", {
                             "item_code": item.item_code,
                             "item_name": item.item_name,
                             "quantity": qty,
-                            "uom": item.stock_uom,
                             "stock_uom": item.stock_uom,
-                            "conversion_factor": 1,
                             "image": item.image, 
                             "item_slug": item.custom_slug, 
                         })
 
-        
-        validate_cart_expiry(cart)
-        
         removed_items, price_updated_items = reprice_cart(cart, customer)
 
 
@@ -186,6 +266,44 @@ def add_to_cart(item_code=None, qty=1, auth_context=None):
 
     except Exception:
         return server_error("Add To Cart Error", "Failed to add item")
+
+
+def _refuse_unpurchasable(item_code):
+    """An error envelope when this exact code may not be bought, else None.
+
+    Deliberately code-only. Attributes, UOM, warehouse, price list and rate are
+    not accepted here and never were; what this adds is that the code itself is
+    re-checked against ERPNext rather than assumed valid because a product page
+    offered it.
+    """
+
+    from yob_storefront.services.variant_service import is_salable_sku, is_template
+
+    if not frappe.db.exists("Item", item_code):
+        return error_response(
+            ITEM_NOT_FOUND,
+            "Item not found.",
+            field="item_code",
+            status_code=HTTP_NOT_FOUND,
+        )
+
+    if is_template(item_code):
+        return error_response(
+            ITEM_IS_TEMPLATE,
+            "Please choose the available options for this product.",
+            field="item_code",
+            status_code=HTTP_UNPROCESSABLE,
+        )
+
+    if not is_salable_sku(item_code):
+        return error_response(
+            ITEM_NOT_PURCHASABLE,
+            "This item is no longer available.",
+            field="item_code",
+            status_code=HTTP_UNPROCESSABLE,
+        )
+
+    return None
 
 
 # =========================================================

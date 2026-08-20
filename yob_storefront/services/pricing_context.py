@@ -67,17 +67,22 @@ class SellingContext:
             lists.append(self.default_price_list)
         return [pl for pl in dict.fromkeys(lists) if pl]
 
-    def resolved_warehouse(self, item_code):
-        """The warehouse ERPNext itself would put on a Sales Order line.
+    def item_details(self, item_code):
+        """What ERPNext would put on a Sales Order line for this item, today.
 
-        Deliberately ASKS ERPNext instead of reimplementing the precedence
-        (Item Default per company -> Item Group -> Stock Settings). Item defaults
-        are a child table keyed on company, and any YOB copy of that chain would
-        be a second source of truth free to disagree with the order it is meant
-        to describe.
+        Deliberately ASKS ERPNext rather than reimplementing any of its
+        precedence -- warehouse (Item Default per company -> Item Group -> Brand
+        -> Stock Settings) or selling UOM (`sales_uom` else `stock_uom`). Any YOB
+        copy of those chains would be a second source of truth, free to disagree
+        with the order it is meant to describe.
 
-        Returns None when ERPNext resolves nothing -- which is a real answer, not
-        a failure, and callers must not invent a warehouse to fill the gap.
+        No `uom` is passed in, which is the whole point: with one in context
+        `get_basic_details` has no decision left to make.
+
+        Returns None when ERPNext refuses to describe the item -- a real answer,
+        not a failure. Deliberately NOT a bare `except Exception`: those two are
+        the real failure modes here, and swallowing everything would hide a
+        genuine fault behind a silently missing value.
         """
 
         from erpnext.stock.get_item_details import get_item_details
@@ -97,16 +102,38 @@ class SellingContext:
             "ignore_pricing_rule": 1,
         })
         try:
-            return get_item_details(args, doc=None, for_validate=True).get("warehouse")
+            return get_item_details(args, doc=None, for_validate=True)
         except (frappe.ValidationError, frappe.DoesNotExistError):
-            # An item ERPNext refuses to describe has no transaction warehouse --
-            # a real answer, so availability is reported as unknown rather than
-            # failing the catalogue read.
-            #
-            # Deliberately NOT a bare `except Exception`: those two are the real
-            # failure modes here, and swallowing everything would hide a genuine
-            # fault behind a silently missing stock figure.
             return None
+
+    def resolved_warehouse(self, item_code):
+        """The warehouse ERPNext itself would put on a Sales Order line.
+
+        Returns None when ERPNext resolves nothing -- callers must not invent a
+        warehouse to fill the gap; availability is reported as unknown instead of
+        failing the catalogue read.
+        """
+
+        details = self.item_details(item_code)
+
+        return details.get("warehouse") if details else None
+
+    def resolved_selling_uom(self, item_code):
+        """The unit ERPNext would sell this item in RIGHT NOW.
+
+        Used to compare against the unit a Cart line was priced in, so an
+        Add-to-Cart cannot pour a quantity the buyer entered in Boxes into a line
+        that is counted in Nos. It answers "what does the product page mean by 1
+        today?" and nothing else -- it never rewrites a stored line, and no
+        conversion happens anywhere in YOB.
+
+        Returns None when ERPNext refuses to describe the item, which is treated
+        by callers as "no comparison possible", never as a mismatch.
+        """
+
+        details = self.item_details(item_code)
+
+        return details.get("uom") if details else None
 
 
 def context_for(customer_doc, qty=1):

@@ -10,6 +10,12 @@ item_not_found
 cart_not_found
 cart_empty
 quantity_invalid
+cart_item_uom_changed
+item_is_template
+item_not_purchasable
+variant_attributes_required
+variant_not_available
+variant_family_unsupported
 contact_not_found
 contact_invalid
 contact_required

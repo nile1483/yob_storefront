@@ -1,1109 +1,1201 @@
 {
-  "info": {
-    "name": "YOB Storefront API \u2014 frontend contract",
-    "description": "Request names are prefixed [AUTH] or [PUBLIC].\n\nRun login_with_password first, keep the sid cookie, and put the returned csrf_token into {{csrf_token}}.\n\nNo real credentials, session ids, payment tokens or provider secrets are stored here \u2014 every such value is a placeholder.",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ "info": {
+  "name": "YOB Storefront API \u2014 frontend contract",
+  "description": "Request names are prefixed [AUTH] or [PUBLIC].\n\nRun login_with_password first, keep the sid cookie, and put the returned csrf_token into {{csrf_token}}.\n\nNo real credentials, session ids, payment tokens or provider secrets are stored here \u2014 every such value is a placeholder.\n\nVariant flow: get_items (family card) -> get_item (family, attributes[] + variants[]) -> resolve_variant (actual SKU, priced) -> add_to_cart(item_code, qty).",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ },
+ "variable": [
+  {
+   "key": "base_url",
+   "value": "http://storefront.local:8080"
   },
-  "variable": [
+  {
+   "key": "csrf_token",
+   "value": "",
+   "description": "From login response."
+  },
+  {
+   "key": "payment_token",
+   "value": "test_payment_token_example_only",
+   "description": "From proceed_to_payment. A live bearer credential \u2014 never commit a real one."
+  },
+  {
+   "key": "company",
+   "value": "Example Trading Co"
+  },
+  {
+   "key": "contact_name",
+   "value": "Example Contact-Example Buyer Ltd"
+  },
+  {
+   "key": "billing_address_name",
+   "value": "Example Billing-Billing"
+  },
+  {
+   "key": "shipping_address_name",
+   "value": "Example Shipping-Shipping"
+  },
+  {
+   "key": "razorpay_order_id",
+   "value": "order_EXAMPLE0001"
+  },
+  {
+   "key": "razorpay_payment_id",
+   "value": "pay_EXAMPLE0001"
+  },
+  {
+   "key": "razorpay_signature",
+   "value": "<from Razorpay callback>"
+  },
+  {
+   "key": "order_id",
+   "value": "SAL-ORD-2026-00001",
+   "description": "a Sales Order id belonging to the logged-in customer"
+  },
+  {
+   "key": "category_slug",
+   "value": "fasteners"
+  },
+  {
+   "key": "item_slug",
+   "value": "cotton-tee"
+  },
+  {
+   "key": "template_item_code",
+   "value": "TEE"
+  }
+ ],
+ "item": [
+  {
+   "name": "Auth",
+   "item": [
     {
-      "key": "base_url",
-      "value": "http://storefront.local:8080"
+     "name": "[AUTH] get_session_context",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_auth.api.auth.get_session_context?application=STOREFRONT",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_auth.api.auth.get_session_context"
+       ],
+       "query": [
+        {
+         "key": "application",
+         "value": "STOREFRONT"
+        }
+       ]
+      },
+      "description": "AUTH"
+     }
     },
     {
-      "key": "csrf_token",
-      "value": "",
-      "description": "From login response."
+     "name": "[PUBLIC] login_with_otp",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_auth.api.auth.login_with_otp",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_auth.api.auth.login_with_otp"
+       ],
+       "query": []
+      },
+      "description": "PUBLIC",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"challenge_id\": \"\",\n  \"otp\": \"\"\n}"
+      }
+     }
     },
     {
-      "key": "payment_token",
-      "value": "test_payment_token_example_only",
-      "description": "From proceed_to_payment. A live bearer credential \u2014 never commit a real one."
+     "name": "[PUBLIC] login_with_password",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_auth.api.auth.login_with_password",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_auth.api.auth.login_with_password"
+       ],
+       "query": []
+      },
+      "description": "PUBLIC",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"application\": \"STOREFRONT\",\n  \"username\": \"buyer@example.com\",\n  \"password\": \"<your-password>\"\n}"
+      }
+     }
     },
     {
-      "key": "company",
-      "value": "Example Trading Co"
+     "name": "[AUTH] logout",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_auth.api.auth.logout",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_auth.api.auth.logout"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     }
     },
     {
-      "key": "contact_name",
-      "value": "Example Contact-Example Buyer Ltd"
-    },
-    {
-      "key": "billing_address_name",
-      "value": "Example Billing-Billing"
-    },
-    {
-      "key": "shipping_address_name",
-      "value": "Example Shipping-Shipping"
-    },
-    {
-      "key": "razorpay_order_id",
-      "value": "order_EXAMPLE0001"
-    },
-    {
-      "key": "razorpay_payment_id",
-      "value": "pay_EXAMPLE0001"
-    },
-    {
-      "key": "razorpay_signature",
-      "value": "<from Razorpay callback>"
-    },
-    {
-      "key": "order_id",
-      "value": "SAL-ORD-2026-00001",
-      "description": "a Sales Order id belonging to the logged-in customer"
+     "name": "[PUBLIC] request_otp",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_auth.api.auth.request_otp",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_auth.api.auth.request_otp"
+       ],
+       "query": []
+      },
+      "description": "PUBLIC",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"application\": \"\",\n  \"identifier\": \"\",\n  \"method\": \"\"\n}"
+      }
+     }
     }
-  ],
-  "item": [
+   ]
+  },
+  {
+   "name": "Catalog",
+   "item": [
     {
-      "name": "Auth",
-      "item": [
-        {
-          "name": "[AUTH] get_session_context",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_auth.api.auth.get_session_context?application=STOREFRONT",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_auth.api.auth.get_session_context"
-              ],
-              "query": [
-                {
-                  "key": "application",
-                  "value": "STOREFRONT"
-                }
-              ]
-            },
-            "description": "AUTH"
-          }
-        },
-        {
-          "name": "[PUBLIC] login_with_otp",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_auth.api.auth.login_with_otp",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_auth.api.auth.login_with_otp"
-              ],
-              "query": []
-            },
-            "description": "PUBLIC",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"challenge_id\": \"\",\n  \"otp\": \"\"\n}"
-            }
-          }
-        },
-        {
-          "name": "[PUBLIC] login_with_password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_auth.api.auth.login_with_password",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_auth.api.auth.login_with_password"
-              ],
-              "query": []
-            },
-            "description": "PUBLIC",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"application\": \"STOREFRONT\",\n  \"username\": \"buyer@example.com\",\n  \"password\": \"<your-password>\"\n}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] logout",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_auth.api.auth.logout",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_auth.api.auth.logout"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          }
-        },
-        {
-          "name": "[PUBLIC] request_otp",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_auth.api.auth.request_otp",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_auth.api.auth.request_otp"
-              ],
-              "query": []
-            },
-            "description": "PUBLIC",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"application\": \"\",\n  \"identifier\": \"\",\n  \"method\": \"\"\n}"
-            }
-          }
-        }
-      ]
+     "name": "[AUTH] get_categories",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_categories",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.catalog.get_categories"
+       ],
+       "query": []
+      },
+      "description": "AUTH"
+     }
     },
     {
-      "name": "Catalog",
-      "item": [
+     "name": "[AUTH] get_category",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_category?slug=example-category&qty=1",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.catalog.get_category"
+       ],
+       "query": [
         {
-          "name": "[AUTH] get_categories",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_categories",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.catalog.get_categories"
-              ],
-              "query": []
-            },
-            "description": "AUTH"
-          }
+         "key": "slug",
+         "value": "example-category"
         },
         {
-          "name": "[AUTH] get_category",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_category?slug=example-category&qty=1",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.catalog.get_category"
-              ],
-              "query": [
-                {
-                  "key": "slug",
-                  "value": "example-category"
-                },
-                {
-                  "key": "qty",
-                  "value": "1"
-                }
-              ]
-            },
-            "description": "AUTH"
-          }
-        },
-        {
-          "name": "[AUTH] get_item",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_item?slug=example-item&qty=1",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.catalog.get_item"
-              ],
-              "query": [
-                {
-                  "key": "slug",
-                  "value": "example-item"
-                },
-                {
-                  "key": "qty",
-                  "value": "1"
-                }
-              ]
-            },
-            "description": "AUTH"
-          }
-        },
-        {
-          "name": "[AUTH] get_config",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cms.get_config",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cms.get_config"
-              ],
-              "query": []
-            },
-            "description": "AUTH"
-          }
+         "key": "qty",
+         "value": "1"
         }
-      ]
+       ]
+      },
+      "description": "AUTH"
+     }
     },
     {
-      "name": "Cart",
-      "item": [
-        {
-          "name": "[AUTH] add_to_cart",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.add_to_cart",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.add_to_cart"
-              ],
-              "query": []
-            },
-            "description": "AUTH\n\nDELTA SEMANTICS: qty is a DELTA added to any existing line for this item_code -- it does NOT replace it. Line qty 2 + add qty 5 = 7, on ONE row. A quantity stepper must send the difference. NOT idempotent: a retry or double-submit adds twice. There is no absolute set-quantity endpoint.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"item_code\": \"EXAMPLE-ITEM-001\",\n  \"qty\": 2\n}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] apply_coupon",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.apply_coupon",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.apply_coupon"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"code\": \"EXAMPLE10\"\n}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] clear_cart",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.clear_cart",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.clear_cart"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] get_cart",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.get_cart",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.get_cart"
-              ],
-              "query": []
-            },
-            "description": "AUTH"
-          }
-        },
-        {
-          "name": "[AUTH] remove_coupon",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.remove_coupon",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.remove_coupon"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] remove_from_cart",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.remove_from_cart",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.remove_from_cart"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"item_code\": \"EXAMPLE-ITEM-001\"\n}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] set_cart_billing_address",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_billing_address",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.set_cart_billing_address"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"billing_address\": \"{{billing_address_name}}\"\n}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] set_cart_contact",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_contact",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.set_cart_contact"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"contact_person\": \"{{contact_name}}\"\n}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] set_cart_shipping_address",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_shipping_address",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.cart.set_cart_shipping_address"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"shipping_address\": \"{{shipping_address_name}}\"\n}"
-            }
-          }
-        }
-      ]
+     "name": "[AUTH] get_config",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cms.get_config",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cms.get_config"
+       ],
+       "query": []
+      },
+      "description": "AUTH"
+     }
     },
     {
-      "name": "Address & Contact",
-      "item": [
+     "name": "[AUTH] get_items (bounded listing)",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_items?scope_type=category&scope_value={{category_slug}}&page_size=24&sort=name_asc",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.catalog.get_items"
+       ],
+       "query": [
         {
-          "name": "[AUTH] add_address",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.address.add_address",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.address.add_address"
-              ],
-              "query": []
-            },
-            "description": "AUTH",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          }
+         "key": "scope_type",
+         "value": "category"
         },
         {
-          "name": "[AUTH] add_contact",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.address.add_contact",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.address.add_contact"
-              ],
-              "query": []
-            },
-            "description": "AUTH \u2014 Create a Contact master linked to the authenticated Customer.",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          }
+         "key": "scope_value",
+         "value": "{{category_slug}}"
         },
         {
-          "name": "[AUTH] delete_address",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.address.delete_address",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.address.delete_address"
-              ],
-              "query": []
-            },
-            "description": "AUTH\n\n200 deleted | 404 address_not_found | 409 address_in_use (Cart, historical Sales Order, or Customer default still references it). 409 is NOT retryable and detaches nothing. Never auto-retry a delete whose response was lost -- re-read the list.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"\"\n}"
-            }
-          }
+         "key": "page_size",
+         "value": "24"
         },
         {
-          "name": "[AUTH] delete_contact",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.address.delete_contact",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.address.delete_contact"
-              ],
-              "query": []
-            },
-            "description": "AUTH\n\n200 deleted | 404 contact_not_found | 409 contact_in_use. As delete_address: not retryable, nothing auto-detached.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"\"\n}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] get_addresses",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.address.get_addresses",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.address.get_addresses"
-              ],
-              "query": []
-            },
-            "description": "AUTH"
-          }
-        },
-        {
-          "name": "[AUTH] get_contacts",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.address.get_contacts",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.address.get_contacts"
-              ],
-              "query": []
-            },
-            "description": "AUTH"
-          }
-        },
-        {
-          "name": "[AUTH] update_address",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.address.update_address",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.address.update_address"
-              ],
-              "query": []
-            },
-            "description": "AUTH\n\nPARTIAL UPDATE: send `name` + only the fields you edit. Omitted = unchanged. Explicit \"\" = CLEARED. Do not pad the payload to preserve fields -- that now clears them. Idempotent.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"{{billing_address_name}}\",\n  \"address_line1\": \"2 Example House, Example Road\"\n}"
-            }
-          }
-        },
-        {
-          "name": "[AUTH] update_contact",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.address.update_contact",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.address.update_contact"
-              ],
-              "query": []
-            },
-            "description": "AUTH\n\nPARTIAL UPDATE, same semantics as update_address. email/phone in the response come from the saved record.",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          }
+         "key": "sort",
+         "value": "name_asc"
         }
-      ]
+       ]
+      },
+      "description": "AUTH\n\nOne card per simple Item and one per variant FAMILY -- never one per variant. Read `price_state`: `priced` has money, `select_options` is a family and every monetary field is null."
+     }
     },
     {
-      "name": "Checkout",
-      "item": [
+     "name": "[AUTH] get_item (simple OR family)",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_item?slug={{item_slug}}&qty=1",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.catalog.get_item"
+       ],
+       "query": [
         {
-          "name": "[AUTH] proceed_to_payment",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Frappe-CSRF-Token",
-                "value": "{{csrf_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.checkout.proceed_to_payment",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.checkout.proceed_to_payment"
-              ],
-              "query": []
-            },
-            "description": "AUTH \u2014 Issue (or re-issue) the checkout credential for the buyer's open Cart.",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          }
+         "key": "slug",
+         "value": "{{item_slug}}"
         },
         {
-          "name": "[AUTH] get_payment_methods",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.payment_method.get_payment_methods?company={{company}}&order_amount=500",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.payment_method.get_payment_methods"
-              ],
-              "query": [
-                {
-                  "key": "company",
-                  "value": "{{company}}"
-                },
-                {
-                  "key": "order_amount",
-                  "value": "500"
-                }
-              ]
-            },
-            "description": "AUTH \u2014 Payment methods available to the AUTHENTICATED customer."
-          }
+         "key": "qty",
+         "value": "1"
         }
-      ]
+       ]
+      },
+      "description": "AUTH\n\nDiscriminate on `data.is_template`: 0 = purchasable product, 1 = variant family carrying `attributes[]` + `variants[]` and NO price. Valid combinations come only from `variants[]`."
+     }
     },
     {
-      "name": "Public Payment",
-      "item": [
+     "name": "[AUTH] resolve_variant",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.resolve_variant?template={{template_item_code}}&attributes={\"Colour\":\"Orange\",\"Size\":\"Medium\"}&qty=1",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.catalog.resolve_variant"
+       ],
+       "query": [
         {
-          "name": "[PUBLIC (token)] get_checkout_data",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.payment.get_checkout_data?token={{payment_token}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.payment.get_checkout_data"
-              ],
-              "query": [
-                {
-                  "key": "token",
-                  "value": "{{payment_token}}"
-                }
-              ]
-            },
-            "description": "PUBLIC (token) \u2014 Render the guest payment page for one immutable obligation."
-          }
+         "key": "template",
+         "value": "{{template_item_code}}"
         },
         {
-          "name": "[PUBLIC (token)] process_payment",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.payment.process_payment",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.payment.process_payment"
-              ],
-              "query": []
-            },
-            "description": "PUBLIC (token) \u2014 Commit the obligation locally, then dispatch to the chosen method.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"token\": \"{{payment_token}}\",\n  \"payment_method\": \"Razorpay\"\n}"
-            }
-          }
+         "key": "attributes",
+         "value": "{\"Colour\":\"Orange\",\"Size\":\"Medium\"}"
         },
         {
-          "name": "[PUBLIC (provider callback)] verify_payment",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.payment.verify_payment",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.payment.verify_payment"
-              ],
-              "query": []
-            },
-            "description": "PUBLIC (provider callback)",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"razorpay_order_id\": \"{{razorpay_order_id}}\",\n  \"razorpay_payment_id\": \"{{razorpay_payment_id}}\",\n  \"razorpay_signature\": \"{{razorpay_signature}}\"\n}"
-            }
-          }
+         "key": "qty",
+         "value": "1"
         }
-      ]
-    },
-    {
-      "name": "Orders",
-      "item": [
-        {
-          "name": "[AUTH] get_order_details",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.order.get_order_details?order_id={{order_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.order.get_order_details"
-              ],
-              "query": [
-                {
-                  "key": "order_id",
-                  "value": "{{order_id}}",
-                  "description": "REQUIRED -- from get_orders[].name. Omitting it returns 422 validation_failed."
-                }
-              ]
-            },
-            "description": "AUTH\n\n`order_id` is REQUIRED (422 validation_failed if omitted). Unknown or another customer's order -> 404 order_not_found, identically.\n\nAddresses: use `billing_address_display` / `shipping_address_display` -- plain text, historical snapshot, never HTML. The `*_address_name` fields are identifiers only. The old `billing_address`/`shipping_address` objects were removed."
-          }
-        },
-        {
-          "name": "[AUTH] get_orders",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/method/yob_storefront.api.order.get_orders",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "method",
-                "yob_storefront.api.order.get_orders"
-              ],
-              "query": []
-            },
-            "description": "AUTH\n\nTakes NO parameters -- no filter, search, paging or limit.\n\nOrdered by `creation` DESC (newest first). Render as received; do not sort client-side. `transaction_date` cannot reproduce this order for same-day orders.\n\nEach row carries the order's own `currency`."
-          }
-        }
-      ]
+       ]
+      },
+      "description": "AUTH\n\nA COMPLETE attribute selection -> the actual variant, priced. `attributes` is URL-encoded JSON containing every attribute of the family.\n\n422 `variant_attributes_required` when incomplete; 422 `variant_not_available` when the combination has no salable variant. Send `data.name` to add_to_cart."
+     }
     }
-  ]
+   ]
+  },
+  {
+   "name": "Cart",
+   "item": [
+    {
+     "name": "[AUTH] add_to_cart",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.add_to_cart",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.add_to_cart"
+       ],
+       "query": []
+      },
+      "description": "AUTH\n\nDELTA SEMANTICS: qty is a DELTA added to any existing line for this item_code -- it does NOT replace it. Line qty 2 + add qty 5 = 7, on ONE row. A quantity stepper must send the difference. NOT idempotent: a retry or double-submit adds twice. There is no absolute set-quantity endpoint.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"item_code\": \"EXAMPLE-ITEM-001\",\n  \"qty\": 2\n}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] apply_coupon",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.apply_coupon",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.apply_coupon"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"code\": \"EXAMPLE10\"\n}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] clear_cart",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.clear_cart",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.clear_cart"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] get_cart",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.get_cart",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.get_cart"
+       ],
+       "query": []
+      },
+      "description": "AUTH"
+     }
+    },
+    {
+     "name": "[AUTH] remove_coupon",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.remove_coupon",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.remove_coupon"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] remove_from_cart",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.remove_from_cart",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.remove_from_cart"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"item_code\": \"EXAMPLE-ITEM-001\"\n}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] set_cart_billing_address",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_billing_address",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.set_cart_billing_address"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"billing_address\": \"{{billing_address_name}}\"\n}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] set_cart_contact",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_contact",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.set_cart_contact"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"contact_person\": \"{{contact_name}}\"\n}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] set_cart_shipping_address",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cart.set_cart_shipping_address",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cart.set_cart_shipping_address"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"shipping_address\": \"{{shipping_address_name}}\"\n}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "Address & Contact",
+   "item": [
+    {
+     "name": "[AUTH] add_address",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.address.add_address",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.address.add_address"
+       ],
+       "query": []
+      },
+      "description": "AUTH",
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] add_contact",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.address.add_contact",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.address.add_contact"
+       ],
+       "query": []
+      },
+      "description": "AUTH \u2014 Create a Contact master linked to the authenticated Customer.",
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] delete_address",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.address.delete_address",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.address.delete_address"
+       ],
+       "query": []
+      },
+      "description": "AUTH\n\n200 deleted | 404 address_not_found | 409 address_in_use (Cart, historical Sales Order, or Customer default still references it). 409 is NOT retryable and detaches nothing. Never auto-retry a delete whose response was lost -- re-read the list.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"name\": \"\"\n}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] delete_contact",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.address.delete_contact",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.address.delete_contact"
+       ],
+       "query": []
+      },
+      "description": "AUTH\n\n200 deleted | 404 contact_not_found | 409 contact_in_use. As delete_address: not retryable, nothing auto-detached.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"name\": \"\"\n}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] get_addresses",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.address.get_addresses",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.address.get_addresses"
+       ],
+       "query": []
+      },
+      "description": "AUTH"
+     }
+    },
+    {
+     "name": "[AUTH] get_contacts",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.address.get_contacts",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.address.get_contacts"
+       ],
+       "query": []
+      },
+      "description": "AUTH"
+     }
+    },
+    {
+     "name": "[AUTH] update_address",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.address.update_address",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.address.update_address"
+       ],
+       "query": []
+      },
+      "description": "AUTH\n\nPARTIAL UPDATE: send `name` + only the fields you edit. Omitted = unchanged. Explicit \"\" = CLEARED. Do not pad the payload to preserve fields -- that now clears them. Idempotent.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"name\": \"{{billing_address_name}}\",\n  \"address_line1\": \"2 Example House, Example Road\"\n}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] update_contact",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.address.update_contact",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.address.update_contact"
+       ],
+       "query": []
+      },
+      "description": "AUTH\n\nPARTIAL UPDATE, same semantics as update_address. email/phone in the response come from the saved record.",
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "Checkout",
+   "item": [
+    {
+     "name": "[AUTH] proceed_to_payment",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "X-Frappe-CSRF-Token",
+        "value": "{{csrf_token}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.checkout.proceed_to_payment",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.checkout.proceed_to_payment"
+       ],
+       "query": []
+      },
+      "description": "AUTH \u2014 Issue (or re-issue) the checkout credential for the buyer's open Cart.",
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     }
+    },
+    {
+     "name": "[AUTH] get_payment_methods",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.payment_method.get_payment_methods?company={{company}}&order_amount=500",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.payment_method.get_payment_methods"
+       ],
+       "query": [
+        {
+         "key": "company",
+         "value": "{{company}}"
+        },
+        {
+         "key": "order_amount",
+         "value": "500"
+        }
+       ]
+      },
+      "description": "AUTH \u2014 Payment methods available to the AUTHENTICATED customer."
+     }
+    }
+   ]
+  },
+  {
+   "name": "Public Payment",
+   "item": [
+    {
+     "name": "[PUBLIC (token)] get_checkout_data",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.payment.get_checkout_data?token={{payment_token}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.payment.get_checkout_data"
+       ],
+       "query": [
+        {
+         "key": "token",
+         "value": "{{payment_token}}"
+        }
+       ]
+      },
+      "description": "PUBLIC (token) \u2014 Render the guest payment page for one immutable obligation."
+     }
+    },
+    {
+     "name": "[PUBLIC (token)] process_payment",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.payment.process_payment",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.payment.process_payment"
+       ],
+       "query": []
+      },
+      "description": "PUBLIC (token) \u2014 Commit the obligation locally, then dispatch to the chosen method.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"token\": \"{{payment_token}}\",\n  \"payment_method\": \"Razorpay\"\n}"
+      }
+     }
+    },
+    {
+     "name": "[PUBLIC (provider callback)] verify_payment",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.payment.verify_payment",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.payment.verify_payment"
+       ],
+       "query": []
+      },
+      "description": "PUBLIC (provider callback)",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"razorpay_order_id\": \"{{razorpay_order_id}}\",\n  \"razorpay_payment_id\": \"{{razorpay_payment_id}}\",\n  \"razorpay_signature\": \"{{razorpay_signature}}\"\n}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "Orders",
+   "item": [
+    {
+     "name": "[AUTH] get_order_details",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.order.get_order_details?order_id={{order_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.order.get_order_details"
+       ],
+       "query": [
+        {
+         "key": "order_id",
+         "value": "{{order_id}}",
+         "description": "REQUIRED -- from get_orders[].name. Omitting it returns 422 validation_failed."
+        }
+       ]
+      },
+      "description": "AUTH\n\n`order_id` is REQUIRED (422 validation_failed if omitted). Unknown or another customer's order -> 404 order_not_found, identically.\n\nAddresses: use `billing_address_display` / `shipping_address_display` -- plain text, historical snapshot, never HTML. The `*_address_name` fields are identifiers only. The old `billing_address`/`shipping_address` objects were removed."
+     }
+    },
+    {
+     "name": "[AUTH] get_orders",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.order.get_orders",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.order.get_orders"
+       ],
+       "query": []
+      },
+      "description": "AUTH\n\nTakes NO parameters -- no filter, search, paging or limit.\n\nOrdered by `creation` DESC (newest first). Render as received; do not sort client-side. `transaction_date` cannot reproduce this order for same-day orders.\n\nEach row carries the order's own `currency`."
+     }
+    }
+   ]
+  }
+ ]
 }

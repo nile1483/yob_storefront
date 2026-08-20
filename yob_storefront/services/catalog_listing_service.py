@@ -352,8 +352,15 @@ def fetch_candidates(ctx, category, terms, sort, after_keys, limit):
         "i.custom_category = %(category)s",
         "i.disabled = 0",
         "i.is_sales_item = 1",
-        # A template is not transactable; Phase 22A showed one reaching pricing.
-        "IFNULL(i.has_variants, 0) = 0",
+        # A public card needs a public URL. A variant has no slug of its own by
+        # design (Phase 24B), so this also keeps unroutable rows out.
+        "IFNULL(i.custom_slug, '') != ''",
+        # ONE card per family, never one per variant (Decision 2). An individual
+        # variant is reached by choosing attributes on its family's page.
+        "IFNULL(i.variant_of, '') = ''",
+        # Manufacturer-based families have no attribute selector, so they are not
+        # presentable; they fail closed rather than being listed unusable.
+        "(IFNULL(i.has_variants, 0) = 0 OR i.variant_based_on = 'Item Attribute')",
         "(i.end_of_life IS NULL OR i.end_of_life = '0000-00-00' OR i.end_of_life >= %(today)s)",
     ]
 
@@ -367,18 +374,44 @@ def fetch_candidates(ctx, category, terms, sort, after_keys, limit):
         return []
     params["price_lists"] = tuple(price_lists)
 
-    where.append("""EXISTS (
+    # A simple Item is listable when IT has a possible price. A FAMILY is listable
+    # when at least one of its salable variants does -- a template can never carry
+    # an Item Price at all (ERPNext refuses to create one), so asking about the
+    # template itself would hide every variant product in the catalogue.
+    #
+    # Still a deliberate SUPERSET, exactly as before: false positives are filtered
+    # by Stage 2, false negatives would be lost products.
+    price_exists = """
         SELECT 1 FROM `tabItem Price` ip
-        WHERE ip.item_code IN (i.name, IFNULL(i.variant_of, i.name))
+        WHERE ip.item_code = {item}
           AND ip.selling = 1
           AND ip.price_list IN %(price_lists)s
           AND ip.price_list_rate > 0
-          AND IFNULL(ip.uom, '') IN ('', i.stock_uom)
+          AND IFNULL(ip.uom, '') IN ('', {uom})
           AND (ip.customer = %(customer)s
                OR (IFNULL(ip.customer, '') = '' AND IFNULL(ip.supplier, '') = ''))
           AND IFNULL(ip.valid_from, '2000-01-01') <= %(today)s
           AND IFNULL(ip.valid_upto, '2500-12-31') >= %(today)s
           AND IFNULL(ip.batch_no, '') = ''
+    """
+
+    where.append(f"""(
+        (IFNULL(i.has_variants, 0) = 0 AND EXISTS (
+            {price_exists.format(item="i.name", uom="i.stock_uom")}
+        ))
+        OR
+        (i.has_variants = 1 AND EXISTS (
+            SELECT 1 FROM `tabItem` v
+            WHERE v.variant_of = i.name
+              AND v.disabled = 0
+              AND v.is_sales_item = 1
+              AND IFNULL(v.has_variants, 0) = 0
+              AND (v.end_of_life IS NULL OR v.end_of_life = '0000-00-00'
+                   OR v.end_of_life >= %(today)s)
+              AND EXISTS (
+                {price_exists.format(item="v.name", uom="v.stock_uom")}
+              )
+        ))
     )""")
 
     if after_keys:
@@ -395,7 +428,7 @@ def fetch_candidates(ctx, category, terms, sort, after_keys, limit):
     return frappe.db.sql(
         f"""
         SELECT i.name, i.item_name, i.custom_slug, i.image, i.stock_uom,
-               i.variant_of, i.creation
+               i.variant_of, i.has_variants, i.creation
         FROM `tabItem` i
         WHERE {' AND '.join(where)}
         ORDER BY {mode['sql']}
@@ -417,6 +450,55 @@ ITEM_LOCAL_EXCEPTIONS = (
     frappe.DoesNotExistError,
     frappe.PermissionError,
 )
+
+
+def family_has_sellable_variant(ctx, template):
+    """Does this family have at least ONE variant a buyer could be sold?
+
+    Stops at the first eligible variant, so the ordinary family costs one cheap
+    price lookup. Only a family where NOTHING is eligible walks its whole variant
+    list -- and each step is `get_price_list_rate_for`, a single query, never a
+    Sales Order. No family card ever triggers the pricing engine.
+    """
+
+    from yob_storefront.services.variant_service import salable_variants
+
+    for variant in salable_variants(template):
+        stock_uom = frappe.get_cached_value("Item", variant.name, "stock_uom")
+
+        if is_catalog_eligible(ctx, variant.name, stock_uom, template):
+            return True
+
+    return False
+
+
+def family_candidate(row):
+    """A family card: identity and options, deliberately no money.
+
+    `price_state` is explicit so a client renders "Select options" from a stated
+    fact rather than inferring it from missing fields. The monetary keys are
+    present and null so the row keeps ONE shape across simple and family cards.
+    """
+
+    return {
+        "name": row["name"],
+        "item_name": row["item_name"],
+        "slug": row["custom_slug"],
+        "stock_uom": row["stock_uom"],
+        "uom": None,
+        "conversion_factor": None,
+        "image": row["image"] or None,
+        "has_variants": 1,
+        "price_state": "select_options",
+        "base_price": None,
+        "rate": None,
+        "discount_percentage": None,
+        "discount_amount": None,
+        "net_amount": None,
+        "tax_amount": None,
+        "total_amount": None,
+        "pricing_rule_label": None,
+    }
 
 
 def price_candidate(ctx, row):
@@ -450,6 +532,16 @@ def price_candidate(ctx, row):
         "item_name": row["item_name"],
         "slug": row["custom_slug"],
         "stock_uom": row["stock_uom"],
+        # A simple product states its condition too, so a client reads ONE shape
+        # for both kinds of card instead of inferring from missing keys.
+        "has_variants": 0,
+        "price_state": "priced",
+        # The unit the price above is PER. `get_item_pricing` prices in the UOM
+        # ERPNext resolves for a selling transaction (`sales_uom` when set), so a
+        # listing card that showed only `stock_uom` would label a per-Box price
+        # as a per-Nos one.
+        "uom": pricing["uom"],
+        "conversion_factor": pricing["conversion_factor"],
         "image": row["image"] or None,
         "base_price": pricing["base_price"],
         "rate": pricing["rate"],
@@ -516,10 +608,23 @@ def list_items(ctx, category, terms, sort, page_size, after_keys, scope_type, sc
             # Stage 2 before Stage 3: never build a Sales Order for an Item with no
             # valid base price. This is what keeps expensive work on the page rather
             # than on the category.
-            if not is_catalog_eligible(ctx, row["name"], row["stock_uom"], row.get("variant_of")):
-                continue
+            if row.get("has_variants"):
+                # A FAMILY card. It is listable when it can actually sell
+                # something, and it is never priced: ERPNext refuses an Item Price
+                # on a template, and inventing a "representative" rate from one
+                # variant would quote a number no buyer is charged. Pricing every
+                # variant instead would restore the unbounded per-item loop Phase
+                # 22B removed. So the card carries a state, not a price
+                # (Decision 2).
+                if not family_has_sellable_variant(ctx, row["name"]):
+                    continue
+                priced = family_candidate(row)
+            else:
+                if not is_catalog_eligible(ctx, row["name"], row["stock_uom"],
+                                           row.get("variant_of")):
+                    continue
+                priced = price_candidate(ctx, row)
 
-            priced = price_candidate(ctx, row)
             if priced is not None:
                 collected.append(priced)
                 keys_by_item[priced["name"]] = last_scanned_keys

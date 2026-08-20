@@ -55,6 +55,32 @@ may change. `field` is present when the error belongs to a specific input.
 | `cart_not_found` | `proceed_to_payment` | no open Draft cart (**404**) | not_found |
 | `cart_empty` | `proceed_to_payment` | cart has no items | validation |
 | `quantity_invalid` | `add_to_cart` | `qty` must be > 0; `field: "qty"` | validation |
+| `item_is_template` | `add_to_cart` | the code is a variant FAMILY, not a product (**422**); choose attributes on the family page and add the resolved variant | validation |
+| `item_not_purchasable` | `add_to_cart` | the SKU exists but cannot be sold now — disabled, not a sales item, past end of life, or an orphaned variant (**422**) | validation |
+| `cart_item_uom_changed` | `add_to_cart` | the merchant changed the item's selling unit after this cart line was priced, so the quantity just entered and the quantity on the line do not mean the same thing (**409**); `field: "item_code"`, `details: {item_code, existing_uom, current_uom}`. Tell the buyer the unit changed and offer to remove the line so it can be added again. The backend never converts and never merges across units. | conflict |
+
+## Catalog — listing (`get_items`, `get_category`)
+
+Every one is a client-fixable request problem, answered **422** with the offending
+field named. None of them is a server fault.
+
+| Code | Endpoints | Meaning | Category |
+|---|---|---|---|
+| `unsupported_scope` | `get_items` | `scope_type` other than `category`; `collection`/`all` are reserved, not broken; `field: "scope_type"` | validation |
+| `unsupported_filters` | `get_items` | `filters` was non-empty (or unparseable JSON); filters are not implemented and are never silently dropped; `field: "filters"` | validation |
+| `unsupported_sort` | `get_items` | `sort` other than `name_asc` / `name_desc` / `newest`; `field: "sort"` | validation |
+| `page_size_invalid` | `get_items` | `page_size` outside 1..48 — **refused, never clamped**, so a client bug is visible; `field: "page_size"` | validation |
+| `cursor_invalid` | `get_items` | the cursor is malformed, or belongs to a different scope/search/sort/customer/price list; request the first page again; `field: "cursor"` | validation |
+| `search_too_long` | `get_items` | the search string exceeds the allowed length; `field: "search"` | validation |
+| `category_not_listable` | `get_items` | the slug names a GROUP category, which holds sub-categories rather than products; call `get_categories` for its children; `field: "scope_value"` | validation |
+
+## Catalog — variants
+
+| Code | Endpoints | Meaning | Category |
+|---|---|---|---|
+| `variant_attributes_required` | `resolve_variant` | not every attribute of the family was chosen (**422**); `field: "attributes"` | validation |
+| `variant_not_available` | `resolve_variant` | the chosen combination has no salable variant — never resolved to a neighbour (**422**) | validation |
+| `variant_family_unsupported` | `get_item` | a `Manufacturer`-based family, which has no attribute selector (**422**) | validation |
 
 ## Coupons
 

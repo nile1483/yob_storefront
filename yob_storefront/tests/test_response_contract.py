@@ -10,6 +10,7 @@ storefront-specific is configuration, declared below.
 """
 
 import pathlib
+import json
 import unittest
 
 from yob_core.testing.api_contract import APIContractChecker
@@ -31,6 +32,10 @@ DELEGATING_HELPERS = {
     # and returns a full envelope of its own.
     "_cart_checkout",
     "_sales_order_checkout",
+    # get_item dispatches on what the slug addresses: a simple Item is priced
+    # inline, a variant FAMILY answers with its matrix. The family branch builds
+    # and returns a full envelope of its own (Phase 24B).
+    "_family_response",
     # Account CRUD: turns a Frappe/ERPNext/India-Compliance validation refusal
     # into the standard `validation_failed` envelope, with the framework's
     # message sanitised. Shared by add/update of both Address and Contact so
@@ -87,6 +92,79 @@ class TestErrorCodes(unittest.TestCase):
             storefront_response.APPLICATION_ACCESS_DENIED, "application_access_denied"
         )
         self.assertEqual(storefront_response.HTTP_NOT_FOUND, 404)
+
+
+class TestPublishedApiReference(unittest.TestCase):
+    """The reference package must describe the API that actually exists.
+
+    The smallest guard that would have caught the real drift: `catalog.get_items`
+    shipped in Phase 22B and `catalog.resolve_variant` in Phase 24B, and neither
+    appeared in `openapi.json` until Phase 24D-1 went looking. A published
+    endpoint nobody documented is a contract a client has to reverse-engineer.
+
+    Deliberately shallow -- presence, not shape. Validating every field against a
+    schema would be a documentation framework; this is a checklist that fails the
+    moment a new endpoint or error code is added without publishing it.
+    """
+
+    HANDOFF = APP_ROOT.parent / "frontend-api-handoff"
+
+    def openapi(self):
+        path = self.HANDOFF / "openapi.json"
+        if not path.exists():
+            self.skipTest("no published OpenAPI document in this checkout")
+        return json.loads(path.read_text())
+
+    def whitelisted_endpoints(self):
+        import importlib
+        import pkgutil
+
+        import frappe
+
+        import yob_storefront.api as api_pkg
+
+        found = set()
+        for module_info in pkgutil.iter_modules(api_pkg.__path__):
+            module = importlib.import_module(f"yob_storefront.api.{module_info.name}")
+            for name, obj in vars(module).items():
+                if not callable(obj) or getattr(obj, "__module__", None) != module.__name__:
+                    continue
+                if obj in frappe.whitelisted:
+                    found.add(f"yob_storefront.api.{module_info.name}.{name}")
+        return found
+
+    def test_every_whitelisted_endpoint_is_published(self):
+        documented = {path.rsplit("/", 1)[-1] for path in self.openapi()["paths"]}
+        missing = sorted(self.whitelisted_endpoints() - documented)
+
+        self.assertEqual(
+            missing, [],
+            "endpoints exist in production but not in frontend-api-handoff/openapi.json:\n"
+            + "\n".join(missing))
+
+    def test_the_reference_documents_no_endpoint_that_vanished(self):
+        documented = {path.rsplit("/", 1)[-1] for path in self.openapi()["paths"]
+                      if ".api.yob_storefront" in path or "yob_storefront.api." in path}
+        stale = sorted(documented - self.whitelisted_endpoints())
+
+        self.assertEqual(stale, [],
+                         "the reference still documents endpoints that no longer exist:\n"
+                         + "\n".join(stale))
+
+    def test_every_storefront_error_code_is_published(self):
+        path = self.HANDOFF / "ERROR-CODES.md"
+        if not path.exists():
+            self.skipTest("no published error-code reference in this checkout")
+
+        published = path.read_text()
+        codes = {value for name, value in vars(storefront_response).items()
+                 if name.isupper() and isinstance(value, str) and value.islower()}
+
+        missing = sorted(code for code in codes if f"`{code}`" not in published)
+
+        self.assertEqual(missing, [],
+                         "error codes returned by production but absent from "
+                         "frontend-api-handoff/ERROR-CODES.md:\n" + "\n".join(missing))
 
 
 class TestEndpointsUseTheContract(unittest.TestCase):

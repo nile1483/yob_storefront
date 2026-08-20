@@ -50,6 +50,22 @@ from yob_core.api.response import (  # noqa: F401  (re-exported API)
 # Catalog
 CATEGORY_NOT_FOUND = "category_not_found"
 ITEM_NOT_FOUND = "item_not_found"
+# An Item Template is a family, not a product: ERPNext refuses to price it and it
+# can never be bought. The buyer picks attributes on the family page and the
+# server resolves an actual variant SKU. 422 -- a fixable request, never a fault.
+ITEM_IS_TEMPLATE = "item_is_template"
+# The exact code exists but cannot be sold right now: disabled, not a sales item,
+# past end of life, or an orphaned variant.
+ITEM_NOT_PURCHASABLE = "item_not_purchasable"
+# The chosen attribute combination has no variant. Never invented, never
+# silently resolved to a neighbour.
+VARIANT_NOT_AVAILABLE = "variant_not_available"
+# Fewer attributes than the family defines. A partial selection is a different
+# problem from an impossible one, and the buyer fixes it differently.
+VARIANT_ATTRIBUTES_REQUIRED = "variant_attributes_required"
+# `variant_based_on = "Manufacturer"`: a real ERPNext mode with no attribute
+# selector to render. YOB fails closed rather than inventing semantics for it.
+VARIANT_FAMILY_UNSUPPORTED = "variant_family_unsupported"
 
 # Catalog listing (get_items). Every one is a client-fixable request problem, so
 # each is 422 with the offending field named -- none of them is a server fault.
@@ -67,6 +83,13 @@ CATEGORY_NOT_LISTABLE = "category_not_listable"
 CART_NOT_FOUND = "cart_not_found"
 CART_EMPTY = "cart_empty"
 QUANTITY_INVALID = "quantity_invalid"
+# The merchant changed the item's authoritative selling UOM after this Cart line
+# was priced, so the quantity the buyer just entered (counted in today's unit)
+# and the quantity already on the line (counted in the line's own) do not mean
+# the same thing. YOB never converts between them and never reinterprets stored
+# intent, so the add is refused until the line is removed and re-added. 409: the
+# request is valid, the stored state conflicts with it.
+CART_ITEM_UOM_CHANGED = "cart_item_uom_changed"
 
 # Contacts & addresses
 CONTACT_NOT_FOUND = "contact_not_found"

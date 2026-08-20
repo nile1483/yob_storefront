@@ -23,6 +23,10 @@ READ_ONLY = {
     # Bounded catalog listing (Phase 22B-1). A read: it prices into a throwaway
     # in-memory Sales Order that is never inserted, exactly as get_category does.
     "catalog.get_items",
+    # Variant resolution (Phase 24B). A read: it resolves a selection through
+    # ERPNext and prices into a throwaway in-memory Sales Order, exactly as
+    # get_item does. It stores nothing.
+    "catalog.resolve_variant",
     "cms.get_config", "order.get_orders", "order.get_order_details",
     "payment.get_checkout_data", "payment_method.get_payment_methods",
 }
