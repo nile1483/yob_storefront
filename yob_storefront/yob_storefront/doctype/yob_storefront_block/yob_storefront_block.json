@@ -1,0 +1,354 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-08-21 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "block_name",
+  "column_break_head",
+  "block_type",
+  "enabled",
+  "section_image_banner",
+  "desktop_image",
+  "mobile_image",
+  "column_break_image_banner",
+  "alt_text",
+  "section_rich_text",
+  "content_title",
+  "column_break_rich_text",
+  "text_alignment",
+  "content",
+  "section_carousel",
+  "slides",
+  "auto_play",
+  "column_break_carousel",
+  "interval_ms",
+  "section_product_grid",
+  "storefront_category",
+  "card_type",
+  "column_break_product_grid",
+  "item_limit",
+  "sort_by",
+  "section_promo_grid",
+  "promo_cards",
+  "column_break_promo_grid",
+  "cards_per_row",
+  "section_display",
+  "desktop_height_px",
+  "column_break_display",
+  "mobile_height_px",
+  "section_destination",
+  "link_type",
+  "link_category",
+  "link_page",
+  "column_break_destination",
+  "link_item",
+  "link_external_url",
+  "open_in_new_tab"
+ ],
+ "fields": [
+  {
+   "fieldname": "block_name",
+   "fieldtype": "Data",
+   "label": "Block Name",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "block_type",
+   "fieldtype": "Select",
+   "label": "Block Type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "options": "\nImage Banner\nRich Text\nBanner Carousel\nProduct Grid\nPromo Grid"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_image_banner",
+   "fieldtype": "Section Break",
+   "label": "Image Banner",
+   "depends_on": "eval:doc.block_type==\"Image Banner\""
+  },
+  {
+   "fieldname": "desktop_image",
+   "fieldtype": "Attach Image",
+   "label": "Desktop Image",
+   "depends_on": "eval:doc.block_type==\"Image Banner\"",
+   "mandatory_depends_on": "eval:doc.block_type==\"Image Banner\""
+  },
+  {
+   "fieldname": "mobile_image",
+   "fieldtype": "Attach Image",
+   "label": "Mobile Image",
+   "depends_on": "eval:doc.block_type==\"Image Banner\""
+  },
+  {
+   "fieldname": "column_break_image_banner",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:doc.block_type==\"Image Banner\""
+  },
+  {
+   "fieldname": "alt_text",
+   "fieldtype": "Data",
+   "label": "Alt Text",
+   "depends_on": "eval:doc.block_type==\"Image Banner\""
+  },
+  {
+   "fieldname": "section_rich_text",
+   "fieldtype": "Section Break",
+   "label": "Rich Text",
+   "depends_on": "eval:doc.block_type==\"Rich Text\""
+  },
+  {
+   "fieldname": "content_title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "depends_on": "eval:doc.block_type==\"Rich Text\""
+  },
+  {
+   "fieldname": "column_break_rich_text",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:doc.block_type==\"Rich Text\""
+  },
+  {
+   "fieldname": "text_alignment",
+   "fieldtype": "Select",
+   "label": "Text Alignment",
+   "options": "\nLeft\nCenter",
+   "depends_on": "eval:doc.block_type==\"Rich Text\""
+  },
+  {
+   "fieldname": "content",
+   "fieldtype": "Text Editor",
+   "label": "Content",
+   "depends_on": "eval:doc.block_type==\"Rich Text\"",
+   "mandatory_depends_on": "eval:doc.block_type==\"Rich Text\"",
+   "description": "Sanitised on save. Scripts, event handlers and unsafe URLs are removed."
+  },
+  {
+   "fieldname": "section_carousel",
+   "fieldtype": "Section Break",
+   "label": "Banner Carousel",
+   "depends_on": "eval:doc.block_type==\"Banner Carousel\""
+  },
+  {
+   "fieldname": "slides",
+   "fieldtype": "Table",
+   "label": "Slides",
+   "options": "YOB Storefront Block Slide",
+   "depends_on": "eval:doc.block_type==\"Banner Carousel\""
+  },
+  {
+   "fieldname": "auto_play",
+   "fieldtype": "Check",
+   "label": "Auto Play",
+   "default": "0",
+   "depends_on": "eval:doc.block_type==\"Banner Carousel\""
+  },
+  {
+   "fieldname": "column_break_carousel",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:doc.block_type==\"Banner Carousel\""
+  },
+  {
+   "fieldname": "interval_ms",
+   "fieldtype": "Int",
+   "label": "Interval (ms)",
+   "depends_on": "eval:doc.auto_play && doc.block_type==\"Banner Carousel\"",
+   "description": "Between 2000 and 15000 milliseconds."
+  },
+  {
+   "fieldname": "section_product_grid",
+   "fieldtype": "Section Break",
+   "label": "Product Grid",
+   "depends_on": "eval:doc.block_type==\"Product Grid\""
+  },
+  {
+   "fieldname": "storefront_category",
+   "fieldtype": "Link",
+   "label": "Storefront Category",
+   "options": "Category",
+   "depends_on": "eval:doc.block_type==\"Product Grid\"",
+   "mandatory_depends_on": "eval:doc.block_type==\"Product Grid\"",
+   "description": "The storefront taxonomy is authoritative here. ERPNext Item Group is an internal ERP concept and is never a storefront source."
+  },
+  {
+   "fieldname": "card_type",
+   "fieldtype": "Select",
+   "label": "Card Type",
+   "options": "\nSquare\nPortrait",
+   "depends_on": "eval:doc.block_type==\"Product Grid\""
+  },
+  {
+   "fieldname": "column_break_product_grid",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:doc.block_type==\"Product Grid\""
+  },
+  {
+   "fieldname": "item_limit",
+   "fieldtype": "Int",
+   "label": "Item Limit",
+   "default": "12",
+   "depends_on": "eval:doc.block_type==\"Product Grid\"",
+   "description": "1 to 12. Bounded so a page can never trigger unbounded pricing."
+  },
+  {
+   "fieldname": "sort_by",
+   "fieldtype": "Select",
+   "label": "Sort By",
+   "options": "\nNewest\nName A-Z\nName Z-A",
+   "depends_on": "eval:doc.block_type==\"Product Grid\"",
+   "description": "Only the sorts the catalog listing supports without pricing every candidate. Price sorting is deliberately absent."
+  },
+  {
+   "fieldname": "section_promo_grid",
+   "fieldtype": "Section Break",
+   "label": "Promo Grid",
+   "depends_on": "eval:doc.block_type==\"Promo Grid\""
+  },
+  {
+   "fieldname": "promo_cards",
+   "fieldtype": "Table",
+   "label": "Promo Cards",
+   "options": "YOB Storefront Block Promo Card",
+   "depends_on": "eval:doc.block_type==\"Promo Grid\""
+  },
+  {
+   "fieldname": "column_break_promo_grid",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:doc.block_type==\"Promo Grid\""
+  },
+  {
+   "fieldname": "cards_per_row",
+   "fieldtype": "Select",
+   "label": "Cards Per Row",
+   "options": "\n1\n2\n3",
+   "depends_on": "eval:doc.block_type==\"Promo Grid\""
+  },
+  {
+   "fieldname": "section_display",
+   "fieldtype": "Section Break",
+   "label": "Display",
+   "depends_on": "eval:[\"Image Banner\",\"Banner Carousel\",\"Promo Grid\"].includes(doc.block_type)"
+  },
+  {
+   "fieldname": "desktop_height_px",
+   "fieldtype": "Int",
+   "label": "Desktop Height (px)",
+   "depends_on": "eval:[\"Image Banner\",\"Banner Carousel\",\"Promo Grid\"].includes(doc.block_type)",
+   "description": "80 to 1200 pixels, or blank to let the storefront decide."
+  },
+  {
+   "fieldname": "column_break_display",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:[\"Image Banner\",\"Banner Carousel\",\"Promo Grid\"].includes(doc.block_type)"
+  },
+  {
+   "fieldname": "mobile_height_px",
+   "fieldtype": "Int",
+   "label": "Mobile Height (px)",
+   "depends_on": "eval:[\"Image Banner\",\"Banner Carousel\",\"Promo Grid\"].includes(doc.block_type)",
+   "description": "80 to 1200 pixels, or blank to let the storefront decide."
+  },
+  {
+   "fieldname": "section_destination",
+   "fieldtype": "Section Break",
+   "label": "Destination",
+   "depends_on": "eval:doc.block_type==\"Image Banner\""
+  },
+  {
+   "fieldname": "link_type",
+   "fieldtype": "Select",
+   "label": "Link To",
+   "options": "\nCatalog\nStorefront Category\nStorefront Page\nProduct\nExternal URL",
+   "description": "Leave blank for a non-clickable block. Internal destinations are resolved to routes by the storefront, so no one types a URL.",
+   "depends_on": "eval:doc.block_type==\"Image Banner\""
+  },
+  {
+   "fieldname": "link_category",
+   "fieldtype": "Link",
+   "label": "Category",
+   "options": "Category",
+   "depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"Storefront Category\"",
+   "mandatory_depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"Storefront Category\""
+  },
+  {
+   "fieldname": "link_page",
+   "fieldtype": "Link",
+   "label": "Page",
+   "options": "YOB Storefront Page",
+   "depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"Storefront Page\"",
+   "mandatory_depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"Storefront Page\""
+  },
+  {
+   "fieldname": "column_break_destination",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:doc.block_type==\"Image Banner\""
+  },
+  {
+   "fieldname": "link_item",
+   "fieldtype": "Link",
+   "label": "Product",
+   "options": "Item",
+   "depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"Product\"",
+   "mandatory_depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"Product\"",
+   "description": "A simple product or a variant family. A generated variant is reached through its family page, never by its own URL."
+  },
+  {
+   "fieldname": "link_external_url",
+   "fieldtype": "Data",
+   "label": "External URL",
+   "options": "URL",
+   "depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"External URL\"",
+   "mandatory_depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"External URL\"",
+   "description": "http or https only."
+  },
+  {
+   "fieldname": "open_in_new_tab",
+   "fieldtype": "Check",
+   "label": "Open in New Tab",
+   "default": "0",
+   "depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"External URL\""
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-21 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront Block",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "autoname": "hash",
+ "naming_rule": "Random",
+ "title_field": "block_name"
+}

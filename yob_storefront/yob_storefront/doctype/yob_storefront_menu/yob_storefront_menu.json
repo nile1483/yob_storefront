@@ -1,0 +1,79 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-08-21 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "menu_key",
+  "menu_name",
+  "column_break_menu",
+  "enabled",
+  "description"
+ ],
+ "fields": [
+  {
+   "fieldname": "menu_key",
+   "fieldtype": "Data",
+   "label": "Menu Key",
+   "reqd": 1,
+   "unique": 1,
+   "set_only_once": 1,
+   "in_list_view": 1,
+   "description": "Stable identity a storefront asks for, e.g. `main` or `footer`. Lowercase letters, numbers and hyphens."
+  },
+  {
+   "fieldname": "menu_name",
+   "fieldtype": "Data",
+   "label": "Menu Name",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_menu",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1,
+   "description": "A disabled Menu publishes nothing, whatever its items say."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-21 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront Menu",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "autoname": "field:menu_key",
+ "naming_rule": "By fieldname",
+ "title_field": "menu_name"
+}

@@ -46,6 +46,18 @@ add_to_apps_screen = [
 app_include_css = "/assets/yob_storefront/css/yob.css"
 app_include_js = "/assets/yob_storefront/js/yob.js"
 
+# Desk behaviour ships as APP-OWNED FILES, not Client Script records. A Client
+# Script is mutable site data: it can be edited or deleted in production, it does
+# not arrive with a fresh install unless someone remembers the fixture, and it
+# cannot be reviewed in a pull request. These files migrate with the app.
+doctype_js = {
+    "Item": "public/js/item_storefront_filters.js",
+}
+
+doctype_tree_js = {
+    "YOB Storefront Menu Item": "public/js/yob_storefront_menu_item_tree.js",
+}
+
 # include js, css files in header of web template
 # web_include_css = "/assets/yob_storefront/css/yob.css"
 # web_include_js = "/assets/yob_storefront/js/yob.js"
@@ -190,7 +202,12 @@ doc_events = {
     "Item": {
         # A public slug addresses exactly one product. Enforced here rather than
         # by a unique index: unslugged Items all store the same empty string.
-        "validate": "yob_storefront.utils.item_slug.validate_unique_slug",
+        # Storefront filter integrity is enforced in the same gate, because a
+        # Client Script cannot see Data Import, the REST API or bench execute.
+        "validate": [
+            "yob_storefront.utils.item_slug.validate_unique_slug",
+            "yob_storefront.utils.item_storefront_filters.validate_item_storefront_filters",
+        ],
         "on_update": "yob_storefront.utils.cache.clear_item_cache",
         "after_insert": "yob_storefront.utils.cache.clear_item_cache",
         "on_trash": "yob_storefront.utils.cache.clear_item_cache"

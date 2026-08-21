@@ -178,6 +178,82 @@ def ensure_custom_fields():
 
     create_custom_fields(
         {
+            # ------------------------------------------------------------------
+            # ITEM -- the storefront's own view of a product.
+            #
+            # These two predate this function and were created BY HAND on the
+            # existing benches: the Custom Field fixture in hooks.py is commented
+            # out and nothing else installed them. A fresh install therefore had
+            # no slug and no category, which silently breaks every Phase 22-24
+            # catalog path (`get_item` looks up by `custom_slug`, the listing
+            # filters on `custom_category`). Phase 25A found it; this is the fix.
+            #
+            # `create_custom_fields` inserts when absent and UPDATES the field
+            # definition when present, leaving stored VALUES untouched -- so this
+            # is safe to run on the existing sites and repeatable by design.
+            # ------------------------------------------------------------------
+            "Item": [
+                {
+                    "fieldname": "custom_slug",
+                    "label": "Slug",
+                    "fieldtype": "Data",
+                    "insert_after": "item_name",
+                    # NOT required. A public slug addresses a simple Item or a
+                    # variant FAMILY; generated variants deliberately have none
+                    # (Phase 24B). Making it mandatory would block ERPNext from
+                    # creating variants at all.
+                    "reqd": 0,
+                    "description": (
+                        "Public storefront URL segment. Required in practice for "
+                        "anything a buyer navigates to -- a simple Item or a "
+                        "variant template -- and must be unique. Generated "
+                        "variants are reached through their family page and carry "
+                        "no slug of their own."
+                    ),
+                },
+                {
+                    "fieldname": "custom_category",
+                    "label": "Storefront Category",
+                    "fieldtype": "Link",
+                    "options": "Category",
+                    "insert_after": "custom_slug",
+                    "description": (
+                        "The storefront taxonomy this product is listed under. "
+                        "ERPNext Item Group stays an internal ERP/pricing concept "
+                        "and is never the storefront's taxonomy."
+                    ),
+                },
+                {
+                    "fieldname": "custom_storefront_tab",
+                    "label": "Storefront Filters",
+                    "fieldtype": "Tab Break",
+                    "insert_after": "dashboard_tab",
+                },
+                {
+                    "fieldname": "custom_storefront_filter_set",
+                    "label": "Storefront Filter Set",
+                    "fieldtype": "Link",
+                    "options": "YOB Storefront Filter Set",
+                    "insert_after": "custom_storefront_tab",
+                    "description": (
+                        "ADMIN SCOPE for this product's merchandising metadata: "
+                        "the Filters below may only come from this set. It is NOT "
+                        "the storefront's filter UI -- that is decided by the "
+                        "Category's own Filter Set, and the two need not match."
+                    ),
+                },
+                {
+                    "fieldname": "custom_storefront_filters",
+                    "label": "Storefront Filters",
+                    "fieldtype": "Table",
+                    "options": "YOB Storefront Item Filter",
+                    "insert_after": "custom_storefront_filter_set",
+                    "description": (
+                        "Merchandising facets for catalog listing. Unrelated to "
+                        "ERPNext variant attributes, which resolve an actual SKU."
+                    ),
+                },
+            ],
             "Payment Request": [
                 {
                     "fieldname": "custom_checkout_token",

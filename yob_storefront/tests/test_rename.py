@@ -187,7 +187,16 @@ class TestEndpointProtection(unittest.TestCase):
         "verify_payment",
     }
     # Desk-internal endpoint authorized by standard Frappe DocType permissions.
-    DESK_PERMISSION_GUARDED = {"get_contact_for_customer"}
+    #: Desk-only endpoints. They serve the Frappe Desk (link queries, tree
+    #: loaders) rather than the storefront, so they carry an explicit
+    #: `frappe.has_permission` check instead of storefront application access.
+    #: They live under `yob_storefront/desk/`, deliberately outside `api/`.
+    DESK_PERMISSION_GUARDED = {
+        "get_contact_for_customer",
+        "filters_in_set",
+        "get_children",
+        "add_node",
+    }
 
     def _endpoints(self):
         for path in _scannable_files():

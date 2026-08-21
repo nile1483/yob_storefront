@@ -781,6 +781,94 @@ Offered exactly like any other: the values that OCCUR in generated variants. YOB
 never expands `from_range`/`to_range`/`increment` into combinations — ERPNext
 generates variants, YOB reports them.
 
+## Storefront administration: navigation, filters, content (Phase 25B)
+
+Admin and data model only. No storefront runtime API exists yet — the facet
+projection, `get_menu` and page/block projection are Phase 25C.
+
+### Twelve app-owned DocTypes
+
+| Group | DocTypes |
+| --- | --- |
+| Filters | `YOB Storefront Filter`, `YOB Storefront Filter Value`, `YOB Storefront Filter Set`, `YOB Storefront Filter Set Filter` (child), `YOB Storefront Item Filter` (child) |
+| Navigation | `YOB Storefront Menu`, `YOB Storefront Menu Item` (tree) |
+| Content | `YOB Storefront Page`, `YOB Storefront Page Block` (child), `YOB Storefront Block`, `YOB Storefront Block Slide` (child), `YOB Storefront Block Promo Card` (child) |
+
+All prefixed, all module `yob_storefront`, all synced by `bench migrate`.
+`Filter Value` is a **master**, not a child: the prototype's child-row Link had no
+referential protection and stored display text, so renaming a value broke it.
+
+### Two Filter Sets, two jobs
+
+`Item.custom_storefront_filter_set` is an ADMIN SCOPE — the Filters an
+administrator may attach to that product. `Category.storefront_filter_set` is
+DISPLAY — the Filters that category's listing will expose. **They are never
+required to match**, and a narrow category set never erases richer item metadata.
+
+### Integrity, enforced on the server
+
+`Item.validate` (never a Client Script — Data Import, the REST API and
+`bench execute` all bypass one): every row's Filter must be in the Item's set;
+every Value must belong to its Filter; a disabled Filter or Value cannot be
+*newly* assigned while existing rows survive untouched; the exact (Filter, Value)
+pair may not repeat; several different values under one Filter are fine.
+Uniqueness on Filter Value is `(filter, value)` and `(filter, value_key)` —
+`Colour/Red` and `Paint Finish/Red` coexist.
+
+### Where filters live
+
+Simple Item or variant **template** — whatever the catalogue lists. A generated
+variant is refused with a message naming its template, so merchants never
+duplicate facets onto every SKU and a silent no-op is impossible. ERPNext variant
+attributes remain a separate system.
+
+### ERPNext Item Group is not storefront taxonomy
+
+Item Group stays internal ERP and pricing structure (Pricing Rules keep using it,
+Phase 23 unchanged). It is never a storefront category, navigation destination,
+filter taxonomy or Product Grid source. Storefront `Category` is authoritative.
+
+### Content blocks
+
+Five types — `Image Banner`, `Rich Text`, `Banner Carousel`, `Product Grid`,
+`Promo Grid`. Not `Offer Grid`: in YOB an offer is an ERPNext Pricing Rule.
+Fields of the other four types are **cleared on save**, so a block that changed
+type cannot keep a stale image or category that a projection might read. Rich
+Text is sanitised on save with Frappe's own cleaner — Angular's sanitizer is the
+last line of defence, not the only one.
+
+**Destinations are typed and shared with navigation.** A merchant picks a type
+(Catalog · Storefront Category · Storefront Page · Product · External URL) and a
+record; nobody types an Angular route, and route construction belongs to the
+Phase 25C projection, never to Desk JavaScript. A Product destination accepts a
+simple Item or a variant FAMILY with a slug and refuses a generated variant —
+Phase 24 family routing stays authoritative. External URLs are http(s) only.
+`utils.storefront_content.apply_destination()` is the single validator, used by
+menu items, banners, carousel slides and promo cards alike. Slide and card order
+is the Frappe child-row `idx`; there is no second ordering field.
+
+A Product Grid stores a **bounded query**: one storefront Category, 1–12 items,
+and only sorts the catalogue can do without pricing every candidate (price
+sorting is deliberately absent). A Page holds at most three of them, enforced
+when the page is saved rather than when a buyer opens it. Phase 25C runs them
+through the existing `list_items()`, so grids inherit Phase 22–24 behaviour whole.
+
+### Installation
+
+`install.ensure_custom_fields()` now owns every Item field — `custom_slug`,
+`custom_category`, the Storefront tab, `custom_storefront_filter_set` and
+`custom_storefront_filters` — and runs on `after_install` **and** `after_migrate`.
+
+> The first two were previously created BY HAND. The Custom Field fixture in
+> `hooks.py` is commented out and nothing else installed them, so a fresh install
+> had no slug and no category field and the whole Phase 22–24 catalog silently
+> could not work. Found in Phase 25A, fixed here, proved by test.
+
+`custom_slug` is installed **not required** (Phase 24B: generated variants carry
+no slug). Desk behaviour ships as app-owned files through `doctype_js` /
+`doctype_tree_js`, not Client Script records. The existing Workspace gains
+`Catalog Filters`, `Navigation` and `Content` sections — no second workspace.
+
 ## Owned DocTypes
 
 Known Storefront-owned DocTypes from the reviewed archive:

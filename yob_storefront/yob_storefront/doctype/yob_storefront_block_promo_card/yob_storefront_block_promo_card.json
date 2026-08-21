@@ -1,0 +1,124 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-21 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "desktop_image",
+  "mobile_image",
+  "column_break_media",
+  "title",
+  "alt_text",
+  "section_destination",
+  "link_type",
+  "link_category",
+  "link_page",
+  "column_break_destination",
+  "link_item",
+  "link_external_url",
+  "open_in_new_tab"
+ ],
+ "fields": [
+  {
+   "fieldname": "desktop_image",
+   "fieldtype": "Attach Image",
+   "label": "Desktop Image",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "mobile_image",
+   "fieldtype": "Attach Image",
+   "label": "Mobile Image"
+  },
+  {
+   "fieldname": "column_break_media",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "alt_text",
+   "fieldtype": "Data",
+   "label": "Alt Text",
+   "description": "Describes the image for screen readers. Not decorative text."
+  },
+  {
+   "fieldname": "section_destination",
+   "fieldtype": "Section Break",
+   "label": "Destination"
+  },
+  {
+   "fieldname": "link_type",
+   "fieldtype": "Select",
+   "label": "Link To",
+   "options": "\nCatalog\nStorefront Category\nStorefront Page\nProduct\nExternal URL",
+   "description": "Leave blank for a non-clickable block. Internal destinations are resolved to routes by the storefront, so no one types a URL."
+  },
+  {
+   "fieldname": "link_category",
+   "fieldtype": "Link",
+   "label": "Category",
+   "options": "Category",
+   "depends_on": "eval:doc.link_type==\"Storefront Category\"",
+   "mandatory_depends_on": "eval:doc.link_type==\"Storefront Category\""
+  },
+  {
+   "fieldname": "link_page",
+   "fieldtype": "Link",
+   "label": "Page",
+   "options": "YOB Storefront Page",
+   "depends_on": "eval:doc.link_type==\"Storefront Page\"",
+   "mandatory_depends_on": "eval:doc.link_type==\"Storefront Page\""
+  },
+  {
+   "fieldname": "column_break_destination",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "link_item",
+   "fieldtype": "Link",
+   "label": "Product",
+   "options": "Item",
+   "depends_on": "eval:doc.link_type==\"Product\"",
+   "mandatory_depends_on": "eval:doc.link_type==\"Product\"",
+   "description": "A simple product or a variant family. A generated variant is reached through its family page, never by its own URL."
+  },
+  {
+   "fieldname": "link_external_url",
+   "fieldtype": "Data",
+   "label": "External URL",
+   "options": "URL",
+   "depends_on": "eval:doc.link_type==\"External URL\"",
+   "mandatory_depends_on": "eval:doc.link_type==\"External URL\"",
+   "description": "http or https only."
+  },
+  {
+   "fieldname": "open_in_new_tab",
+   "fieldtype": "Check",
+   "label": "Open in New Tab",
+   "default": "0",
+   "depends_on": "eval:doc.link_type==\"External URL\""
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-21 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront Block Promo Card",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "permissions": []
+}

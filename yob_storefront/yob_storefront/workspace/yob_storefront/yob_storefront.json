@@ -23,11 +23,120 @@
   },
   {
    "dependencies": "",
+   "description": "Storefront taxonomy \u2014 the authoritative one",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Category",
    "link_count": 0,
    "link_to": "Category",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catalog Filters",
+   "link_count": 3,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "description": "Merchandising facets such as Voltage",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Filters",
+   "link_count": 0,
+   "link_to": "YOB Storefront Filter",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "description": "Selectable values of a filter",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Filter Values",
+   "link_count": 0,
+   "link_to": "YOB Storefront Filter Value",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "description": "Reusable groups of filters",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Filter Sets",
+   "link_count": 0,
+   "link_to": "YOB Storefront Filter Set",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Navigation",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "description": "Navigation areas such as the main menu",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Menus",
+   "link_count": 0,
+   "link_to": "YOB Storefront Menu",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "description": "Links and groups inside a menu",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Menu Items",
+   "link_count": 0,
+   "link_to": "YOB Storefront Menu Item",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Content",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "description": "Storefront pages and their block order",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Pages",
+   "link_count": 0,
+   "link_to": "YOB Storefront Page",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "description": "Banners, rich text, grids",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Content Blocks",
+   "link_count": 0,
+   "link_to": "YOB Storefront Block",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -42,6 +151,7 @@
   },
   {
    "dependencies": "",
+   "description": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Cart",
@@ -61,6 +171,7 @@
   },
   {
    "dependencies": "",
+   "description": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Payment Method",
@@ -72,6 +183,7 @@
   },
   {
    "dependencies": "",
+   "description": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Payment Method Assignment",
@@ -83,6 +195,7 @@
   },
   {
    "dependencies": "",
+   "description": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Razorpay Payment Log",
@@ -94,6 +207,7 @@
   },
   {
    "dependencies": "",
+   "description": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "YOB Store Settings",
@@ -104,7 +218,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-06 10:00:00.000000",
+ "modified": "2026-08-21 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "yob_storefront",
  "name": "YOB Storefront",
@@ -117,24 +231,35 @@
  "sequence_id": 2.0,
  "shortcuts": [
   {
+   "color": "Grey",
    "doc_view": "List",
    "label": "Category",
    "link_to": "Category",
    "type": "DocType"
   },
   {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Storefront Menus",
+   "link_to": "YOB Storefront Menu",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Content Blocks",
+   "link_to": "YOB Storefront Block",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
    "doc_view": "List",
    "label": "Shopping Cart",
    "link_to": "Cart",
    "type": "DocType"
   },
   {
-   "doc_view": "List",
-   "label": "Payment Method",
-   "link_to": "Payment Method",
-   "type": "DocType"
-  },
-  {
+   "color": "Grey",
    "doc_view": "",
    "label": "Store Settings",
    "link_to": "YOB Store Settings",

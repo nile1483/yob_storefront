@@ -20,6 +20,7 @@
   "display_order",
   "column_break_sfvo",
   "is_active",
+  "storefront_filter_set",
   "thumbnail",
   "thumbnail_preview",
   "section_break_ziup",
@@ -115,6 +116,13 @@
    "fieldname": "is_active",
    "fieldtype": "Check",
    "label": "Is Active"
+  },
+  {
+   "fieldname": "storefront_filter_set",
+   "fieldtype": "Link",
+   "label": "Storefront Filter Set",
+   "options": "YOB Storefront Filter Set",
+   "description": "Which filters this category's storefront listing will expose. Independent of an Item's own Filter Set, which only scopes what an administrator may attach to that product: an item may legitimately carry richer metadata than a category chooses to show."
   },
   {
    "fieldname": "section_break_ziup",
