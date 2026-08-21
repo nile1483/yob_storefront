@@ -1,6 +1,6 @@
 # CHG-002 — Storefront Navigation, Catalog Filters and Content Blocks
 
-Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model) implemented`
+Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model) implemented; Phase 25C (runtime APIs) implemented — see §21 for the as-built names`
 
 Owner: `Nilesh`
 
@@ -603,3 +603,38 @@ patch is only worth writing if the merchant confirms real data exists there.
 9. **Per-page grid cap** (recommended ≤3 grids × 12 items).
 10. **Prototype-site migration** — only needed if real data exists on the
     environment where the prototype was built.
+
+---
+
+## 21. Phase 25C — as built
+
+The runtime layer shipped in one phase rather than the §19 split, and three names
+in §16/§19 were superseded during implementation. **§21 is authoritative where it
+disagrees with §16.**
+
+| §16 name | As built | Why |
+|---|---|---|
+| `navigation.get_menu` | `cms.get_menu(menu_key)` | no new API module: `cms` already owns storefront presentation config |
+| `content.get_page` | `cms.get_page(slug)` | same module, same reason |
+| `catalog.get_filters(scope_type, scope_value)` | `catalog.get_category_filters(scope_value)` | filters are a property of a Category; a `scope_type` that only ever takes one value is a parameter nobody can use correctly |
+| `catalog.get_items(..., filters=<JSON>)` | `catalog.get_items(..., storefront_filters=<JSON>)` | `filters` stays reserved and still answers `unsupported_filters`, so the Phase 22B contract is untouched and no client that sends `filters` today changes meaning |
+| Angular `/p/:slug` | `/pages/:slug` | product decision, locked in 25C |
+
+Everything else in §16 shipped as designed: one destination projection shared by
+menu items, banners, slides and promo cards; blocks discriminated by `type`;
+Product Grid answered by `list_items()` with no pricing, UOM, warehouse or variant
+logic of its own; no facet counts; no caching in this cut.
+
+The dynamic page route is **not stored**. A `storefront_page` destination carries
+`type` + `target` (the public slug) and a null `href`; Angular builds
+`/pages/${target}`. A route change therefore stays an SPA change rather than a
+data migration.
+
+Filter matching is one correlated `EXISTS` per selected filter, appended to the
+**Stage-1** candidate SQL — OR within a filter, AND across filters — so filtering
+happens before pricing and a narrower selection costs fewer pricing calls, never
+more. The normalised selection joins the cursor binding fingerprint.
+
+New stable error codes: `menu_not_found`, `page_not_found`,
+`storefront_filter_invalid`, `storefront_filter_unknown`,
+`storefront_filter_value_unknown`, `storefront_filter_context_required`.

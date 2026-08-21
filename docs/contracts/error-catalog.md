@@ -16,6 +16,12 @@ item_not_purchasable
 variant_attributes_required
 variant_not_available
 variant_family_unsupported
+menu_not_found
+page_not_found
+storefront_filter_invalid
+storefront_filter_unknown
+storefront_filter_value_unknown
+storefront_filter_context_required
 contact_not_found
 contact_invalid
 contact_required

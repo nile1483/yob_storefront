@@ -256,33 +256,41 @@ def _like_pattern(term):
 # CURSOR
 # =========================================================
 
-def _binding_fingerprint(ctx, scope_type, scope_value, terms, sort):
+def _binding_fingerprint(ctx, scope_type, scope_value, terms, sort, selection=None):
     """Ties a cursor to the query and customer that produced it.
 
     Not a security control -- scope and customer are re-authorised on every request
     regardless. This exists so a cursor from "category A / sort name_asc" cannot be
     replayed against "category B / newest" and silently return a nonsense page.
+
+    The merchandising selection joins it for the same reason (Phase 25C): a cursor
+    issued for `Material = Steel` must not resume inside a page of
+    `Material = Aluminium`, where the keyset position means something else entirely.
+    The selection arrives ALREADY NORMALISED -- filters sorted, values sorted and
+    de-duplicated -- so `["red","blue"]` and `["blue","red"]` are one logical query
+    sharing one cursor rather than two.
     """
 
     payload = json.dumps(
-        [scope_type, scope_value, sorted(terms), sort, ctx.customer, ctx.price_list],
+        [scope_type, scope_value, sorted(terms), sort, ctx.customer, ctx.price_list,
+         selection or []],
         separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
-def encode_cursor(ctx, scope_type, scope_value, terms, sort, last_row):
+def encode_cursor(ctx, scope_type, scope_value, terms, sort, last_row, selection=None):
     columns = SORT_MODES[sort]["columns"]
     payload = {
         "v": CURSOR_VERSION,
-        "b": _binding_fingerprint(ctx, scope_type, scope_value, terms, sort),
+        "b": _binding_fingerprint(ctx, scope_type, scope_value, terms, sort, selection),
         "k": [str(last_row.get(col)) for col in columns],
     }
     raw = json.dumps(payload, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def decode_cursor(cursor, ctx, scope_type, scope_value, terms, sort):
+def decode_cursor(cursor, ctx, scope_type, scope_value, terms, sort, selection=None):
     """Untrusted input. Every failure is a clean validation error, never a traceback."""
 
     if not cursor:
@@ -308,7 +316,8 @@ def decode_cursor(cursor, ctx, scope_type, scope_value, terms, sort):
     if not isinstance(keys, list) or len(keys) != 2 or not all(isinstance(k, str) for k in keys):
         raise ListingError("cursor_invalid", "The pagination cursor is not valid.", field="cursor")
 
-    if payload.get("b") != _binding_fingerprint(ctx, scope_type, scope_value, terms, sort):
+    if payload.get("b") != _binding_fingerprint(
+            ctx, scope_type, scope_value, terms, sort, selection):
         # Category, search, sort, customer or price list changed under the cursor.
         raise ListingError(
             "cursor_invalid",
@@ -323,7 +332,7 @@ def decode_cursor(cursor, ctx, scope_type, scope_value, terms, sort):
 # STAGE 1 -- BOUNDED CANDIDATE SELECTION
 # =========================================================
 
-def fetch_candidates(ctx, category, terms, sort, after_keys, limit):
+def fetch_candidates(ctx, category, terms, sort, after_keys, limit, selection=None):
     """One bounded page of plausible Items, in the requested deterministic order.
 
     Every predicate is either a constant, a validated enum, or a bound parameter.
@@ -424,6 +433,34 @@ def fetch_candidates(ctx, category, terms, sort, after_keys, limit):
         where.append(
             f"(i.{col} {op} %(k0)s OR (i.{col} = %(k0)s AND i.name {op} %(k1)s))"
         )
+
+    # ------------------------------------------------------------------
+    # MERCHANDISING FILTERS (Phase 25C)
+    #
+    #     values within one filter -> OR      (an item needs any of them)
+    #     different filters        -> AND     (an item needs all of them)
+    #
+    # One correlated EXISTS per selected filter. A JOIN would multiply a row by
+    # its matching assignments -- an item with Red AND Blue would appear twice,
+    # inflating the page and corrupting the keyset cursor that walks it. EXISTS
+    # answers "does at least one match" and leaves the row count alone.
+    #
+    # This runs in STAGE 1, so filtering happens entirely before Stage 2's price
+    # check and Stage 3's Sales Order: a narrower selection costs FEWER pricing
+    # calls, never more.
+    # ------------------------------------------------------------------
+    for index, (filter_name, value_names) in enumerate(selection or []):
+        params[f"filter_{index}"] = filter_name
+        params[f"values_{index}"] = tuple(value_names)
+
+        where.append(f"""EXISTS (
+            SELECT 1 FROM `tabYOB Storefront Item Filter` sf_{index}
+            WHERE sf_{index}.parent = i.name
+              AND sf_{index}.parenttype = 'Item'
+              AND sf_{index}.parentfield = 'custom_storefront_filters'
+              AND sf_{index}.filter = %(filter_{index})s
+              AND sf_{index}.filter_value IN %(values_{index})s
+        )""")
 
     return frappe.db.sql(
         f"""
@@ -558,7 +595,8 @@ def _keys_of(row, sort):
     return [str(row.get(col)) for col in SORT_MODES[sort]["columns"]]
 
 
-def list_items(ctx, category, terms, sort, page_size, after_keys, scope_type, scope_value):
+def list_items(ctx, category, terms, sort, page_size, after_keys, scope_type, scope_value,
+               selection=None):
     """Run the pipeline until the page is filled, the budget is spent, or candidates
     are exhausted -- and report truthfully which of the three happened.
 
@@ -596,7 +634,7 @@ def list_items(ctx, category, terms, sort, page_size, after_keys, scope_type, sc
     batch_size = min(MAX_CANDIDATE_BATCH, max(page_size, int(page_size * CANDIDATE_OVERFETCH)))
 
     while len(collected) < wanted:
-        rows = fetch_candidates(ctx, category, terms, sort, keys, batch_size)
+        rows = fetch_candidates(ctx, category, terms, sort, keys, batch_size, selection)
         if not rows:
             exhausted = True
             break
@@ -664,6 +702,7 @@ def list_items(ctx, category, terms, sort, page_size, after_keys, scope_type, sc
         next_cursor = encode_cursor(
             ctx, scope_type, scope_value, terms, sort,
             dict(zip(SORT_MODES[sort]["columns"], resume_keys)),
+            selection,
         )
 
     if has_more and not next_cursor:

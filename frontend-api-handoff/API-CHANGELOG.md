@@ -10,6 +10,27 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Storefront navigation, filters and content pages (Phase 25C)
+
+**OLD** — navigation was hard-coded in the SPA, there were no merchandising
+filters, and there was no dynamic content page.
+
+**CURRENT** — three new read endpoints plus one additive parameter:
+
+```
+cms.get_menu(menu_key)                     published navigation tree
+cms.get_page(slug)                         ordered, discriminated content blocks
+catalog.get_category_filters(scope_value)  facets for a category (no counts)
+catalog.get_items(..., storefront_filters) OR within a filter, AND across filters
+```
+
+**FRONTEND ACTION** — drive header and drawer from `get_menu` instead of a
+hard-coded tree; build facet UI from `get_category_filters` and send the keys back
+in `storefront_filters`; **restart pagination whenever the selection changes**
+(the cursor is bound to it). Render blocks by `type`. Treat any response
+containing a `product_grid` as customer-specific and never cache it across users.
+`storefront_page` destinations carry a `null` href by design — build `/pages/${target}` on the client.
+
 ## 0a. Variant families: one page, one card, server-side resolution
 
 **OLD** — every ERPNext variant was listed as its own product card, and every

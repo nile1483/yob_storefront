@@ -74,6 +74,25 @@ field named. None of them is a server fault.
 | `search_too_long` | `get_items` | the search string exceeds the allowed length; `field: "search"` | validation |
 | `category_not_listable` | `get_items` | the slug names a GROUP category, which holds sub-categories rather than products; call `get_categories` for its children; `field: "scope_value"` | validation |
 
+## Storefront filters (Phase 25C)
+
+| Code | Endpoints | Meaning | Category |
+|---|---|---|---|
+| `storefront_filter_invalid` | `get_items` | `storefront_filters` was not a JSON object of `key -> [value keys]` (**422**) — a client bug | validation |
+| `storefront_filter_unknown` | `get_items` | the filter key is not exposed by this category, or is disabled (**422**) — your cached facet list is stale; re-fetch `get_category_filters` | validation |
+| `storefront_filter_value_unknown` | `get_items` | the value is not one of that filter's enabled values (**422**) — same remedy | validation |
+| `storefront_filter_context_required` | `get_items` | filters were sent without a category scope (**422**); merchandising facets only exist inside a category | validation |
+
+Selections are never interpreted as database fields: an unknown key is refused,
+not queried.
+
+## Navigation and content (Phase 25C)
+
+| Code | Endpoints | Meaning | Category |
+|---|---|---|---|
+| `menu_not_found` | `cms.get_menu` | no such menu key, **or** the menu is disabled (**404**) — deliberately indistinguishable | not_found |
+| `page_not_found` | `cms.get_page` | no such page slug, **or** the page is unpublished (**404**) | not_found |
+
 ## Catalog — variants
 
 | Code | Endpoints | Meaning | Category |

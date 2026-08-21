@@ -642,9 +642,9 @@ class BoundedWorkCase(ListingCase):
         sizes = []
         real = svc.fetch_candidates
 
-        def recording(ctx, category, terms, sort, after_keys, limit):
+        def recording(ctx, category, terms, sort, after_keys, limit, selection=None):
             sizes.append(limit)
-            return real(ctx, category, terms, sort, after_keys, limit)
+            return real(ctx, category, terms, sort, after_keys, limit, selection)
 
         with patch.object(svc, "fetch_candidates", side_effect=recording):
             self.listing(page_size=24)
@@ -825,9 +825,9 @@ class CandidateScanContinuationCase(ListingCase):
         limits = []
         real = svc.fetch_candidates
 
-        def recording(ctx, category, terms, sort, after_keys, limit):
+        def recording(ctx, category, terms, sort, after_keys, limit, selection=None):
             limits.append(limit)
-            return real(ctx, category, terms, sort, after_keys, limit)
+            return real(ctx, category, terms, sort, after_keys, limit, selection)
 
         with patch.object(svc, "fetch_candidates", side_effect=recording):
             self.listing(page_size=2)
@@ -864,7 +864,7 @@ class CandidateScanContinuationCase(ListingCase):
             for i in range(total)
         ]
 
-        def fake_fetch(ctx, category, terms, sort, after_keys, limit):
+        def fake_fetch(ctx, category, terms, sort, after_keys, limit, selection=None):
             start = 0
             if after_keys:
                 start = next((i + 1 for i, r in enumerate(synthetic)

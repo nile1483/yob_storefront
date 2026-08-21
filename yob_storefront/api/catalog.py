@@ -508,6 +508,59 @@ def resolve_variant(template=None, attributes=None, qty=1, auth_context=None):
 
 
 # =========================================================
+# CATEGORY FILTER DEFINITIONS  (Phase 25C)
+# =========================================================
+
+@frappe.whitelist(methods=["GET"])
+@yob_api
+@require_application(STOREFRONT_APP, profile_doctype="Customer")
+def get_category_filters(scope_value=None, auth_context=None):
+    """Which merchandising filters a category page should display.
+
+    Decided by `Category.storefront_filter_set` and NOTHING else: no walk up the
+    category tree, no fallback to an Item's own Filter Set (that is an admin
+    scope), no fallback to every global Filter. A category with no Filter Set
+    answers an empty list, which is a merchant's explicit choice.
+
+    Values are the ones actually assigned to a listing entity in that category, so
+    a page never offers a facet that would return nothing. Determined from stored
+    assignments by one indexed query -- **no pricing**, and therefore no counts:
+    `Red (17)` would need the full eligibility pipeline per value.
+    """
+
+    if not scope_value:
+        return error_response(
+            VALIDATION_FAILED, "Category is required.", field="scope_value",
+            status_code=HTTP_UNPROCESSABLE)
+
+    try:
+        get_storefront_customer(auth_context)
+
+        category = frappe.get_value(
+            "Category", {"slug": scope_value, "is_active": 1}, ["name", "is_group"],
+            as_dict=True)
+
+        if not category:
+            return error_response(
+                CATEGORY_NOT_FOUND, "Category not found.", field="scope_value",
+                status_code=HTTP_NOT_FOUND)
+
+        if category.is_group:
+            return error_response(
+                CATEGORY_NOT_LISTABLE,
+                "This category holds sub-categories rather than products.",
+                field="scope_value", status_code=HTTP_UNPROCESSABLE)
+
+        from yob_storefront.services.storefront_filter_service import category_filters
+
+        return success_response({"filters": category_filters(category.name)},
+                                notice="Filters loaded")
+
+    except Exception:
+        return server_error("Get Category Filters Error", "Failed to load filters")
+
+
+# =========================================================
 # BOUNDED CATALOG LISTING  (Phase 22B-1)
 # =========================================================
 
@@ -523,6 +576,7 @@ def get_items(
     page_size=None,
     cursor=None,
     qty=1,
+    storefront_filters=None,
     auth_context=None,
 ):
     """Bounded, cursor-paginated catalog listing.
@@ -546,6 +600,15 @@ def get_items(
     * `sort`        -- `name_asc` (default) | `name_desc` | `newest`.
     * `page_size`   -- 1..48, default 24.
     * `cursor`      -- opaque; from a previous response.
+    * `storefront_filters` -- merchandising selection as JSON, keyed by filter and
+      value KEYS from `get_category_filters`, e.g.
+      `{"material":["steel","aluminium"],"finish":["black"]}`. Values within one
+      filter are OR-ed, different filters are AND-ed. It is a selection, never
+      query grammar: an unknown key is refused, not passed to the database. It
+      applies inside a category, so it requires one.
+
+    `filters` remains reserved and still answers `unsupported_filters`; the
+    merchandising parameter is separate so the Phase 22B contract is untouched.
 
     The Customer comes from `auth_context` only. There is no parameter through which
     a browser can list or price as somebody else.
@@ -664,13 +727,33 @@ def get_items(
                 status_code=HTTP_UNPROCESSABLE,
             )
 
+        # ---------------- merchandising selection ----------------
+        # Parsed and validated BEFORE the cursor is decoded, because the selection
+        # is part of the cursor's binding: a cursor issued for one selection must
+        # not resume inside a page produced by another.
+        from yob_storefront.services.storefront_filter_service import (
+            FilterSelectionError,
+            fingerprint_payload,
+            parse_selection,
+        )
+
+        try:
+            selection = parse_selection(storefront_filters, category.name)
+        except FilterSelectionError as exc:
+            return error_response(exc.code, exc.message, field=exc.field,
+                                  status_code=HTTP_UNPROCESSABLE)
+
+        binding = fingerprint_payload(selection)
+
         # ---------------- run ----------------
         terms = normalize_search(search)
         ctx = PricingContext(customer, qty=qty)
-        after_keys = decode_cursor(cursor, ctx, scope_type, scope_value, terms, sort)
+        after_keys = decode_cursor(cursor, ctx, scope_type, scope_value, terms, sort,
+                                   binding)
 
         items, has_more, next_cursor, _batches = list_items(
-            ctx, category.name, terms, sort, page_size, after_keys, scope_type, scope_value
+            ctx, category.name, terms, sort, page_size, after_keys, scope_type,
+            scope_value, selection
         )
 
         return success_response(

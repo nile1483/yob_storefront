@@ -28,6 +28,10 @@ READ_ONLY = {
     # get_item does. It stores nothing.
     "catalog.resolve_variant",
     "cms.get_config", "order.get_orders", "order.get_order_details",
+    # Storefront runtime reads (Phase 25C). `get_page` prices any Product Grid
+    # through the existing catalogue service into throwaway in-memory Sales
+    # Orders, exactly as `get_items` does; nothing is stored.
+    "catalog.get_category_filters", "cms.get_menu", "cms.get_page",
     "payment.get_checkout_data", "payment_method.get_payment_methods",
 }
 

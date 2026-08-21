@@ -57,6 +57,9 @@ No body. Requires CSRF.
 | `catalog.get_category` | GET | `slug`, `qty` (default 1) |
 | `catalog.get_item` | GET | `slug`, `qty` (default 1) |
 | `catalog.resolve_variant` | GET | `template`, `attributes` (JSON object), `qty` (default 1) |
+| `catalog.get_category_filters` | GET | `scope_value` (category slug) |
+| `cms.get_menu` | GET | `menu_key` |
+| `cms.get_page` | GET | `slug` |
 | `cms.get_config` | GET | — |
 
 `qty` exists because pricing is quantity-dependent — the server returns the
@@ -79,6 +82,81 @@ multiply, divide or convert anything client-side: if you need "2 Strips (20 Nos)
 use `stock_qty`. `catalog.get_items` rows carry `uom` and `conversion_factor`
 alongside `stock_uom` for the same reason — a card showing only `stock_uom` would
 label a per-Strip price as per-Nos.
+
+### Navigation, filters and content (Phase 25C)
+
+**`cms.get_menu(menu_key)`** returns a published tree, at most two levels:
+
+```jsonc
+{"key":"main","label":"Main Menu","items":[
+  {"label":"Tools","type":"group","destination":null,"children":[
+    {"label":"Power Tools","type":"storefront_category","children":[],
+     "destination":{"type":"storefront_category","target":"power-tools",
+                    "href":"/catalog/power-tools","external":false,
+                    "open_in_new_tab":false}}]}]}
+```
+
+A node is published only if the menu, the item, its parent **and its destination**
+still resolve — a disabled category or unpublished page silently removes the item,
+and a group left with no children goes too. Render `destination: null` as
+non-clickable. Ordering is the merchant's; do not re-sort.
+
+**Destinations** are normalised everywhere — menu items, image banners, carousel
+slides and promo cards all use the identical shape. `type` is one of `home`,
+`catalog`, `storefront_category`, `storefront_page`, `product`, `external_url`;
+`target` is a **public slug**, never a database id. `href` is ready to use for
+every type except **`storefront_page`, which is always `null`** — the dynamic page
+route is `/pages/:slug`, so build `/pages/${target}` on the client. The backend
+stores no route by design.
+
+**`catalog.get_category_filters(scope_value)`** returns the facets for a category:
+
+```jsonc
+{"filters":[{"key":"voltage","label":"Voltage",
+             "values":[{"key":"230v","label":"230V"},{"key":"415v","label":"415V"}]}]}
+```
+
+Only that category's own Filter Set — never a parent's — and only values actually
+present on its products. **No counts.** A category with no Filter Set answers
+`{"filters": []}`; render no facet UI.
+
+**Filtering the listing.** Send the keys back to `catalog.get_items`:
+
+```
+GET …catalog.get_items?scope_type=category&scope_value=power-tools
+      &storefront_filters=%7B%22voltage%22%3A%5B%22230v%22%5D%7D
+```
+
+Values inside one filter are **OR**-ed, different filters are **AND**-ed. The
+selection is part of the cursor: **re-fetch from page one whenever the selection
+changes** — a cursor replayed under a different selection answers
+`cursor_invalid`. Reordering or duplicating values does not change the query.
+`filters` remains reserved and still answers `unsupported_filters`.
+
+**`cms.get_page(slug)`** returns ordered, discriminated blocks:
+
+```jsonc
+{"slug":"about-us","title":"About Us","blocks":[
+  {"type":"image_banner","desktop_image":"/files/b.png","alt_text":"…",
+   "desktop_height_px":400,"destination":{…}},
+  {"type":"rich_text","title":"…","html":"<p>…</p>","text_alignment":"center"},
+  {"type":"banner_carousel","auto_play":true,"interval_ms":4000,"slides":[…]},
+  {"type":"promo_grid","cards_per_row":3,"cards":[…]},
+  {"type":"product_grid","category":"power-tools","card_type":"square",
+   "item_limit":12,"items":[ …ListingCard… ]}]}
+```
+
+Switch on `type` — never on which nullable fields happen to be set. Slides and
+cards arrive in the merchant's order; do not re-sort.
+
+**Product Grid items are ordinary `ListingCard` rows**, produced by the same
+catalogue service as `get_items`: simple items are `price_state: "priced"`, and a
+variant family is `price_state: "select_options"` with every money field `null` —
+no child variant's price is ever borrowed. A grid whose category became unusable
+answers `category: null` and `items: []`; it never falls back to other products.
+
+**Caching.** Menus are customer-independent. A page containing a Product Grid is
+**customer-priced** — never cache or share that response across users.
 
 ### Variant families
 

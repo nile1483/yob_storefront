@@ -79,6 +79,19 @@ CURSOR_INVALID = "cursor_invalid"
 SEARCH_TOO_LONG = "search_too_long"
 CATEGORY_NOT_LISTABLE = "category_not_listable"
 
+# Storefront navigation and content (Phase 25C)
+MENU_NOT_FOUND = "menu_not_found"
+PAGE_NOT_FOUND = "page_not_found"
+
+# Merchandising filter selection. Four codes rather than one because a buyer's
+# client fixes each differently: a malformed payload is a bug, an unknown filter
+# means the page is stale, a bad value means the chip is stale, and a missing
+# category means the request had no browsing context to filter within.
+STOREFRONT_FILTER_INVALID = "storefront_filter_invalid"
+STOREFRONT_FILTER_UNKNOWN = "storefront_filter_unknown"
+STOREFRONT_FILTER_VALUE_UNKNOWN = "storefront_filter_value_unknown"
+STOREFRONT_FILTER_CONTEXT_REQUIRED = "storefront_filter_context_required"
+
 # Cart
 CART_NOT_FOUND = "cart_not_found"
 CART_EMPTY = "cart_empty"

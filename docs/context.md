@@ -783,8 +783,8 @@ generates variants, YOB reports them.
 
 ## Storefront administration: navigation, filters, content (Phase 25B)
 
-Admin and data model only. No storefront runtime API exists yet — the facet
-projection, `get_menu` and page/block projection are Phase 25C.
+Admin and data model only. The facet projection, `get_menu` and the page/block
+projection are Phase 25C, below.
 
 ### Twelve app-owned DocTypes
 
@@ -868,6 +868,103 @@ through the existing `list_items()`, so grids inherit Phase 22–24 behaviour wh
 no slug). Desk behaviour ships as app-owned files through `doctype_js` /
 `doctype_tree_js`, not Client Script records. The existing Workspace gains
 `Catalog Filters`, `Navigation` and `Content` sections — no second workspace.
+
+## Storefront runtime APIs (Phase 25C)
+
+Three read endpoints plus one additive parameter, all on the existing YOB API
+boundary. Nothing here prices, queries or resolves anything itself.
+
+| Endpoint | Answers |
+| --- | --- |
+| `cms.get_menu(menu_key)` | a published navigation tree, at most two levels |
+| `catalog.get_category_filters(scope_value)` | the facets a category page should display |
+| `catalog.get_items(..., storefront_filters)` | the same listing, narrowed |
+| `cms.get_page(slug)` | a published page as ordered, discriminated blocks |
+
+### One destination projection
+
+`services/storefront_destination.project_destination()` turns a stored type plus
+a record link into `{type, target, href, external, open_in_new_tab}` — used by
+menu items, banners, carousel slides and promo cards alike, so the four cannot
+drift. `target` is a **public slug**; `link_category`/`link_page`/`link_item` are
+database identity and never leave the server.
+
+`None` means "not clickable" **and** "the target is no longer publishable" — a
+category disabled after linking, an unpublished page, a product that lost its
+slug, or a stored URL that is no longer http(s). A dead link is never shipped.
+
+A `storefront_page` destination carries a **null `href`**. The dynamic page route
+is `/pages/:slug` (decided in Phase 25C) and Angular builds it from `target`; the
+backend deliberately stores no route, so changing it stays an SPA change rather
+than a data migration.
+
+### Menu publishing
+
+Menu enabled AND item enabled AND parent enabled AND destination resolves. A
+Group with no surviving children is dropped too — an expandable entry that opens
+onto nothing is worse than absence. Order is `sequence, lft, name`, the same the
+Desk tree shows. A disabled menu answers `menu_not_found`, exactly like a missing
+one: the storefront has nothing to render either way.
+
+### Filters
+
+Definitions come from `Category.storefront_filter_set` and nothing else — no
+parent inheritance, no fallback to the Item's admin scope, no global list. Values
+are those actually assigned to a listing entity in that category (simple Items and
+variant templates), found by one indexed query. **No pricing, therefore no
+counts**: `Red (17)` needs the full eligibility pipeline per value.
+
+Selection matching is OR within a filter, AND across filters, implemented as one
+correlated `EXISTS` per selected filter appended to the **Stage-1** candidate SQL:
+
+```sql
+AND EXISTS (SELECT 1 FROM `tabYOB Storefront Item Filter` sf_0
+            WHERE sf_0.parent = i.name AND sf_0.parenttype = 'Item'
+              AND sf_0.filter = %(filter_0)s
+              AND sf_0.filter_value IN %(values_0)s)
+```
+
+A JOIN would multiply a row by its matching assignments — an item with Red AND
+Blue would appear twice, inflating the page and corrupting the keyset cursor.
+Because it runs in Stage 1, a narrower selection costs **fewer** pricing calls,
+never more; asserted by a spy on `price_candidate`.
+
+The normalised selection (filters sorted, values sorted and de-duplicated) joins
+`_binding_fingerprint`, so a cursor cannot be replayed against a different
+selection or category, while `["red","blue"]` and `["blue","red"]` remain one
+logical query sharing one cursor.
+
+A selection is never interpreted as a database field: an unknown key answers
+`storefront_filter_unknown`, and facets require a category context
+(`storefront_filter_context_required`).
+
+### Pages and blocks
+
+Discriminated by `type` — `image_banner`, `rich_text`, `banner_carousel`,
+`product_grid`, `promo_grid` — each carrying only its own type's fields. Slides
+and cards keep their child-row order.
+
+A **Product Grid** is answered by `list_items()`, the same service the catalogue
+uses, so grid cards ARE `ListingCard` rows: simple items priced normally, variant
+families `price_state: select_options` with no borrowed child price.
+`content_service` contains no Item query, no Item Price lookup, no Pricing Rule
+evaluation, no UOM, warehouse or stock arithmetic — asserted by an executable-code
+scan. A grid whose category was disabled or turned into a group answers
+`category: null` with an empty `items`, and **never** falls back to other products.
+
+### Caching
+
+Menus and page structure are customer-independent. A page containing a Product
+Grid is **customer-priced** through `SellingContext`, so the hydrated response is
+never cached or shared across customers — proved by a test in which two customers
+on different price lists receive different rates from the same page. The first cut
+adds **no caching at all**: correctness first, and a structural cache would need
+invalidation on every Menu, Page, Block, Category and Filter save.
+
+> Unrelated defect still open (found in Phase 25A): `cms.get_config` calls
+> `frappe.cache().delete_value(cache_key)` immediately before reading the cache,
+> so its one-hour cache never serves anything. Left alone deliberately — it is a
+> separate contract with its own tests.
 
 ## Owned DocTypes
 
