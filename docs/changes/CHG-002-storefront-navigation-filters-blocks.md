@@ -1,6 +1,6 @@
 # CHG-002 — Storefront Navigation, Catalog Filters and Content Blocks
 
-Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model) implemented; Phase 25C (runtime APIs) implemented — see §21 for the as-built names`
+Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model), Phase 25C (runtime APIs) and Phase 25C-1 (contract precision) implemented; Phase 25F signed off — see §21 for the as-built names and the sign-off report for the chain verdict`
 
 Owner: `Nilesh`
 
@@ -638,3 +638,10 @@ more. The normalised selection joins the cursor binding fingerprint.
 New stable error codes: `menu_not_found`, `page_not_found`,
 `storefront_filter_invalid`, `storefront_filter_unknown`,
 `storefront_filter_value_unknown`, `storefront_filter_context_required`.
+
+Phase 25C-1 typed the content-block schemas that 25C had published as
+`array<object>` (`BannerCarouselSlide`, `PromoCard`, `x-block-fields`), taking
+OpenAPI to **3.4.1**. Documentation only; no runtime change.
+
+Phase 25F proved the chain end to end and signed the work off. See
+`CHG-002-storefront-navigation-filters-blocks-report.md`.

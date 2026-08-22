@@ -971,6 +971,31 @@ invalidation on every Menu, Page, Block, Category and Filter save.
 > so its one-hour cache never serves anything. Left alone deliberately — it is a
 > separate contract with its own tests.
 
+## Chain verification (Phase 25F)
+
+Not a feature. `tests/test_storefront_chain.py` walks the whole storefront in one
+scenario, and every step is fed the **published output of the step before it**:
+
+```text
+Desk configuration -> cms.get_menu -> destination.target (the only identity
+published) -> catalog.get_category_filters -> catalog.get_items(storefront_filters)
+-> cms.get_page -> five Blocks -> Product Grid -> family card -> catalog.get_item
+-> catalog.resolve_variant -> qty -> cart.add_to_cart
+```
+
+Unit tests cannot catch a **seam**: a test that calls
+`get_category_filters("power-tools")` supplied the slug itself, so it could never
+notice navigation publishing a docname where the endpoint expects a slug. This
+file exists only for those joins — 18 tests, and no constant a test author typed
+is used as a public identity anywhere in it.
+
+The verdict is recorded in
+`docs/changes/CHG-002-storefront-navigation-filters-blocks-report.md`:
+**PASS with live environment smoke outstanding.** No live credentials exist in
+this environment, so browser verification against a real deployment moves to the
+pre-production checklist rather than blocking sign-off; every step of it already
+has an automated equivalent.
+
 ## Owned DocTypes
 
 Known Storefront-owned DocTypes from the reviewed archive:
