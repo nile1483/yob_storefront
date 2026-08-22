@@ -83,6 +83,11 @@ CATEGORY_NOT_LISTABLE = "category_not_listable"
 MENU_NOT_FOUND = "menu_not_found"
 PAGE_NOT_FOUND = "page_not_found"
 
+# System route content placements (Phase 25G). A route is application structure,
+# not merchant data, so an unknown one is a CLIENT bug rather than a missing
+# record -- it is refused as validation and never mapped to a neighbouring route.
+CONTENT_ROUTE_UNKNOWN = "content_route_unknown"
+
 # Merchandising filter selection. Four codes rather than one because a buyer's
 # client fixes each differently: a malformed payload is a bug, an unknown filter
 # means the page is stale, a bad value means the chip is stale, and a missing

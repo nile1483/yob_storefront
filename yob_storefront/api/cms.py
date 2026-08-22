@@ -3,6 +3,7 @@ from yob_core.api.boundary import yob_api
 from frappe.utils import get_url
 from yob_auth.security.decorators import require_application
 from yob_storefront.api.response import (
+    CONTENT_ROUTE_UNKNOWN,
     HTTP_NOT_FOUND,
     HTTP_UNPROCESSABLE,
     MENU_NOT_FOUND,
@@ -138,3 +139,52 @@ def get_page(slug=None, auth_context=None):
 
     except Exception:
         return server_error("Get Page Error", "Failed to load the page")
+
+
+# ---------------- SYSTEM ROUTE CONTENT ----------------
+
+@frappe.whitelist(methods=["GET"])
+@yob_api
+@require_application(STOREFRONT_APP, profile_doctype="Customer")
+def get_route_content(route_key=None, auth_context=None):
+    """Merchant content for ONE application page, every slot in one request.
+
+    Angular asks once per route and distributes the answer to its own
+    `<yob-content-slot>`s. A request per slot would multiply round trips by the
+    number of positions on the page and would price a Product Grid in isolation,
+    losing the per-route grid budget that keeps the response bounded.
+
+    Every declared slot is returned, empty ones included, so a client can render
+    `slots` without first asking whether a key exists.
+
+    Requires the storefront Customer for the same reason `get_page` does: a slot
+    may hold a Product Grid, and a grid is priced through the buyer's own
+    `SellingContext`. The hydrated response is therefore customer-specific and
+    must never be cached across customers.
+    """
+
+    if not route_key:
+        return error_response(
+            VALIDATION_FAILED, "Route is required.", field="route_key",
+            status_code=HTTP_UNPROCESSABLE)
+
+    try:
+        from yob_storefront.services.content_service import route_content
+        from yob_storefront.utils.system_slots import is_route
+
+        if not is_route(route_key):
+            # Deliberately NOT resolved to a neighbouring route: silently serving
+            # `catalog` content to a client that asked for `catalouge` would hide
+            # the client's bug and merchandise the wrong page.
+            return error_response(
+                CONTENT_ROUTE_UNKNOWN,
+                "That is not an application route that can hold content.",
+                field="route_key", status_code=HTTP_UNPROCESSABLE)
+
+        customer = get_storefront_customer(auth_context)
+
+        return success_response(route_content(route_key, customer),
+                                notice="Route content loaded")
+
+    except Exception:
+        return server_error("Get Route Content Error", "Failed to load route content")

@@ -16,11 +16,9 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
-from yob_storefront.utils.storefront_content import validate_key
+from yob_storefront.utils.storefront_content import MAX_PRODUCT_GRIDS, validate_key
 
-#: At most three grids, at most twelve items each: 36 priced items is a page a
-#: request can build inside the Phase 22B performance envelope.
-MAX_PRODUCT_GRIDS = 3
+__all__ = ["MAX_PRODUCT_GRIDS", "YOBStorefrontPage"]
 
 
 class YOBStorefrontPage(Document):

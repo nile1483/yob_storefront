@@ -147,6 +147,9 @@ class InstallCase(unittest.TestCase):
         "YOB Storefront Filter", "YOB Storefront Filter Value",
         "YOB Storefront Filter Set", "YOB Storefront Menu",
         "YOB Storefront Menu Item", "YOB Storefront Page", "YOB Storefront Block",
+        # Phase 25G. Added to BOTH structures at once, because 25B added it to
+        # one and the omission was invisible for two phases.
+        "YOB Storefront Content Placement",
     )
 
     def test_the_workspace_page_exposes_the_new_administration(self):
@@ -265,6 +268,103 @@ class InstallCase(unittest.TestCase):
         self.assertEqual(
             frappe.db.count("Workspace", {"module": "yob_storefront"}), 1,
             "a competing workspace appeared")
+
+
+class ContentPlacementInstallCase(unittest.TestCase):
+    """Phase 25G ships as ordinary app files, like everything before it."""
+
+    DOCTYPE = "YOB Storefront Content Placement"
+
+    def test_the_placement_doctype_is_app_owned(self):
+        meta = frappe.get_meta(self.DOCTYPE)
+
+        self.assertEqual(meta.module, "yob_storefront")
+        self.assertFalse(meta.custom, "the placement DocType is a site customisation")
+
+    def test_the_doctype_ships_as_a_file_in_this_app(self):
+        import pathlib
+
+        path = (pathlib.Path(frappe.get_app_path("yob_storefront")) / "yob_storefront"
+                / "doctype" / "yob_storefront_content_placement"
+                / "yob_storefront_content_placement.json")
+
+        self.assertTrue(path.exists(), "the DocType is not in the app; migrate cannot install it")
+
+    def test_desk_behaviour_ships_as_an_app_file(self):
+        """The dependent Route -> Position picker, not a Client Script record."""
+
+        import pathlib
+
+        from yob_storefront import hooks
+
+        self.assertIn(self.DOCTYPE, hooks.doctype_js)
+
+        relative = hooks.doctype_js[self.DOCTYPE]
+        path = pathlib.Path(frappe.get_app_path("yob_storefront")) / relative
+
+        self.assertTrue(path.exists(), f"{relative} is missing")
+
+        self.assertFalse(
+            frappe.db.exists("Client Script", {"dt": self.DOCTYPE}),
+            "a Client Script exists; storefront Desk logic must ship as app files")
+
+    def test_the_desk_helpers_are_permission_guarded(self):
+        """Whitelisted, so they must check permission rather than inherit one."""
+
+        import inspect as py_inspect
+
+        from yob_storefront.desk import content_slots
+
+        for helper in (content_slots.get_route_options, content_slots.get_slot_options):
+            source = py_inspect.getsource(helper)
+
+            self.assertIn("has_permission", source,
+                          f"{helper.__name__} is whitelisted but unguarded")
+            self.assertIn("throw=True", source,
+                          f"{helper.__name__} checks permission but does not enforce it")
+
+    def test_the_placement_is_in_the_workspace_page(self):
+        self.assertTrue(
+            frappe.db.exists("Workspace Link", {
+                "parent": "YOB Storefront", "link_to": self.DOCTYPE}),
+            "Content Placements is missing from the workspace page")
+
+    def test_the_placement_is_in_the_left_sidebar(self):
+        """The structure Phase 25B forgot. Asserted against the sidebar DocType."""
+
+        self.assertTrue(
+            frappe.db.exists("Workspace Sidebar Item", {
+                "parent": "YOB Storefront", "link_to": self.DOCTYPE}),
+            "Content Placements is missing from the LEFT sidebar")
+
+    def test_it_sits_under_Content_in_the_sidebar(self):
+        """Not merely present -- present in the right group, after Content Blocks."""
+
+        items = frappe.get_all(
+            "Workspace Sidebar Item", filters={"parent": "YOB Storefront"},
+            fields=["idx", "type", "label", "link_to"], order_by="idx")
+
+        group = None
+        seen_blocks = False
+
+        for row in items:
+            if row.type == "Section Break":
+                group = row.label
+            if row.link_to == "YOB Storefront Block":
+                seen_blocks = True
+            if row.link_to == self.DOCTYPE:
+                self.assertEqual(group, "Content",
+                                 f"Content Placements landed under {group!r}")
+                self.assertTrue(seen_blocks, "it should follow Content Blocks")
+                return
+
+        self.fail("Content Placements is not in the sidebar at all")
+
+    def test_no_second_workspace_or_sidebar_appeared(self):
+        self.assertEqual(
+            frappe.db.count("Workspace", {"module": "yob_storefront"}), 1)
+        self.assertEqual(
+            frappe.db.count("Workspace Sidebar", {"module": "yob_storefront"}), 1)
 
 
 if __name__ == "__main__":

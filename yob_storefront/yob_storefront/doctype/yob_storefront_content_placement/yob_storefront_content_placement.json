@@ -1,0 +1,97 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-22 11:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "route_key",
+  "slot_key",
+  "column_break_where",
+  "sequence",
+  "enabled",
+  "section_break_block",
+  "block"
+ ],
+ "fields": [
+  {
+   "description": "The application page this content appears on. Application-owned: Angular decides which routes exist, and a merchant chooses among them.",
+   "fieldname": "route_key",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Route",
+   "options": "\nhome\ncatalog\ncategory\nproduct\ncart\naccount\norders\norder_detail",
+   "reqd": 1
+  },
+  {
+   "description": "Where inside that page. The choices change with the Route; only positions the chosen page actually renders are valid.",
+   "fieldname": "slot_key",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Position",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_where",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Order within the slot, lowest first. Ties break on internal id, so the order is always deterministic.",
+   "fieldname": "sequence",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Sequence"
+  },
+  {
+   "default": "1",
+   "description": "A disabled placement is kept but never published to the storefront.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "section_break_block",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "The reusable block to render here. The SAME block may also sit on a Storefront Page and in other slots; it is authored once.",
+   "fieldname": "block",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Content Block",
+   "options": "YOB Storefront Block",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-22 11:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront Content Placement",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

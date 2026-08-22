@@ -142,6 +142,18 @@
    "type": "Link"
   },
   {
+   "dependencies": "",
+   "description": "Banners, rich text, grids",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Content Placements",
+   "link_count": 0,
+   "link_to": "YOB Storefront Content Placement",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Orders",
@@ -218,7 +230,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-21 12:00:00.000000",
+ "modified": "2026-08-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "yob_storefront",
  "name": "YOB Storefront",

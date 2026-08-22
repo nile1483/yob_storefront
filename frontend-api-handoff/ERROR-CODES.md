@@ -92,6 +92,7 @@ not queried.
 |---|---|---|---|
 | `menu_not_found` | `cms.get_menu` | no such menu key, **or** the menu is disabled (**404**) — deliberately indistinguishable | not_found |
 | `page_not_found` | `cms.get_page` | no such page slug, **or** the page is unpublished (**404**) | not_found |
+| `content_route_unknown` | `cms.get_route_content` | the `route_key` is not an application route that can hold content, or is a deliberately excluded one (login, checkout, payment) (**422**); it is never mapped to a neighbouring route | validation |
 
 ## Catalog — variants
 

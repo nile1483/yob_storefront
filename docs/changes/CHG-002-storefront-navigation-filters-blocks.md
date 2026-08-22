@@ -1,6 +1,6 @@
 # CHG-002 — Storefront Navigation, Catalog Filters and Content Blocks
 
-Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model), Phase 25C (runtime APIs) and Phase 25C-1 (contract precision) implemented; Phase 25F signed off — see §21 for the as-built names and the sign-off report for the chain verdict`
+Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model), Phase 25C (runtime APIs), Phase 25C-1 (contract precision) and Phase 25G (system route placements) implemented; Phase 25F signed off — see §21 for the as-built names, §22 for route placements, and the sign-off report for the chain verdict`
 
 Owner: `Nilesh`
 
@@ -645,3 +645,120 @@ OpenAPI to **3.4.1**. Documentation only; no runtime change.
 
 Phase 25F proved the chain end to end and signed the work off. See
 `CHG-002-storefront-navigation-filters-blocks-report.md`.
+
+
+---
+
+## 22. Phase 25G — System Route Content Placements
+
+### The idea in one sentence
+
+**A Content Block is a reusable merchandising/content unit. It can be placed
+either on a dynamic `YOB Storefront Page` or into an application-owned System
+Route Slot. System Route Slots are defined explicitly by application code and do
+not make page structure merchant-configurable.**
+
+That last clause is the whole boundary:
+
+| Who decides | What |
+|---|---|
+| **Angular** | which routes exist, and where a `<yob-content-slot>` sits inside each |
+| **Merchant** | which Blocks go in a slot, in what order, and whether they are live |
+| **Nobody** | a new route, a new position, or moving one — that is a code change in both repositories |
+
+This is **not a generic layout builder**. A merchant chooses among positions the
+application already renders; they cannot create one.
+
+### One Block, two placement mechanisms
+
+```text
+                    YOB Storefront Block
+                           |
+              +------------+------------+
+              |                         |
+      Storefront Page Block      Content Placement
+              |                         |
+       /pages/:slug              /cart, /orders, ...
+```
+
+Both go through the SAME `content_service.project_block()`, so the wire payload
+cannot depend on which mechanism placed the Block. A test asserts each of the
+five block types is byte-identical through a Page and through a Route; another
+asserts `route_content` never names a block type, because naming one would be the
+first line of a second projector.
+
+Nothing was migrated: `cms.get_page` and `/pages/:slug` are untouched, and no
+existing Page Block became a Placement.
+
+### The registry — `utils/system_slots.py`
+
+Application-owned and hard-coded. Every consumer reads it: DocType validation,
+the Desk pickers, the runtime projection, the OpenAPI enums and the tests.
+
+| `route_key` | Label | Slots, in render order |
+|---|---|---|
+| `home` | Home | `hero`, `main`, `bottom` |
+| `catalog` | Catalog | `above_listing`, `below_listing` |
+| `category` | Category Listing | `above_listing`, `below_listing` |
+| `product` | Product Detail | `above_product`, `below_product` |
+| `cart` | Cart | `above_cart`, `below_cart` |
+| `account` | Account | `above_content`, `below_content` |
+| `orders` | Orders | `above_list`, `below_list` |
+| `order_detail` | Order Detail | `above_order`, `below_order` |
+
+Seven of the eight map to a route the SPA serves today. **`home` does not exist
+yet** — `/` currently redirects to `/catalog` — and is reserved for the frontend
+phase that adds it. It is registered now so the contract is complete when Angular
+arrives; until then it simply answers empty slots.
+
+`EXCLUDED_ROUTES` records the deliberate omissions with their reasons — `login`,
+`checkout`, `payment`, `payment_callback` — so "not yet considered" and
+"considered and refused" cannot be confused later.
+
+### Validation
+
+The **(route, slot) PAIR** is validated, never the halves separately: `cart` is
+real and `above_listing` is real, but `cart.above_listing` is rendered nowhere,
+and content stored there would silently never appear.
+
+* unknown route → refused
+* unknown slot → refused
+* a real slot from another route → refused
+* exact duplicate `(route_key, slot_key, block)` → refused
+* the same Block in another slot, on another route, or on a Page as well → allowed
+* the Block must exist; everything ABOUT it stays the Block's own controller's job
+
+### Product Grid budget
+
+`MAX_PRODUCT_GRIDS = 3` moved to `utils/storefront_content.py` and is now shared
+by the Page controller and the Placement controller — one constant, so the two
+cannot be tuned apart.
+
+For a route the cap counts **across the whole route, not per slot**, because
+`get_route_content` returns every slot in one response: three grids in three
+slots cost exactly what three grids on one page cost. The fourth is refused when
+the merchant saves, never discovered while a buyer waits. Disabled placements do
+not consume the budget.
+
+### Runtime
+
+`cms.get_route_content(route_key)` — GET, one request per route, every declared
+slot returned including empty ones. No caching: a slot may hold a Product Grid,
+which is priced through the buyer's own `SellingContext`, so the hydrated
+response is customer-specific for exactly the reason `cms.get_page` is.
+
+New stable error code: `content_route_unknown` (422). An unknown route is a
+client bug, never resolved to a neighbouring route.
+
+### Desk
+
+Route, then Position: the Position choices are loaded from the registry for the
+chosen route only, and clear when the route changes. Friendly labels are shown
+while machine keys are stored. Convenience only — `validate` re-checks the pair
+on every save, and Data Import, the REST API and `bench execute` never load the
+JavaScript. It ships as an app-owned `doctype_js` file, not a Client Script.
+
+Both Desk structures gained `Content Placements` under `Content`: the Workspace
+page card **and** the v16 left `Workspace Sidebar`. Both source files had their
+`modified` bumped, without which `import_file_by_path` skips them on every
+existing site.

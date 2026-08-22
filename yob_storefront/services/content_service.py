@@ -11,6 +11,14 @@ No client should ever infer a block's kind from which nullable fields happen to
 be populated, and no stale field from a previous type appears -- Phase 25B clears
 those on save, and each projector reads only its own.
 
+TWO PLACEMENT MECHANISMS, ONE PROJECTOR
+---------------------------------------
+A Block reaches a buyer two ways: on a `YOB Storefront Page` (`/pages/:slug`), or
+in an application-owned slot on an existing route (Phase 25G). `project_block()`
+is the ONE function both go through, so the wire payload cannot depend on which
+mechanism placed the Block. A second projector would be a second contract, and
+the client union would quietly grow a dialect.
+
 PRODUCT GRID IS NOT A QUERY ENGINE
 ----------------------------------
 A grid is a stored, bounded question: one storefront Category, at most twelve
@@ -209,3 +217,55 @@ PROJECTORS = {
     "product_grid": _product_grid,
     "promo_grid": _promo_grid,
 }
+
+
+# =========================================================
+# SYSTEM ROUTE CONTENT  (Phase 25G)
+# =========================================================
+
+def route_content(route_key, customer_doc):
+    """Every slot of one application route, with its published blocks.
+
+    ALL declared slots are returned, including empty ones. A stable shape is
+    worth more to a client than a short response: `slots` can be walked without
+    checking whether a key exists, and a slot that empties out reads as "nothing
+    here today" rather than as a contract change.
+
+    One query for the placements, then the SAME `project_block()` a Storefront
+    Page uses. There is no route-specific block logic here and there must never
+    be -- see the module docstring.
+    """
+
+    from yob_storefront.utils.system_slots import slot_keys
+
+    placements = frappe.get_all(
+        "YOB Storefront Content Placement",
+        filters={"route_key": route_key, "enabled": 1},
+        fields=["name", "slot_key", "block", "sequence"],
+        # `name` breaks ties so two placements sharing a sequence still order
+        # deterministically -- an arbitrary order would reshuffle between
+        # requests and look like a rendering bug.
+        order_by="sequence asc, name asc", limit_page_length=0)
+
+    by_slot = {}
+
+    for row in placements:
+        by_slot.setdefault(row.slot_key, []).append(row)
+
+    slots = []
+
+    for slot in slot_keys(route_key):
+        blocks = []
+
+        for row in by_slot.get(slot, []):
+            projected = project_block(row.block, customer_doc)
+
+            # None means the Block is disabled or of a type this release cannot
+            # draw. Skip it: never substitute another Block, and never fall back
+            # to anything. The merchant's other content still renders.
+            if projected:
+                blocks.append(projected)
+
+        slots.append({"key": slot, "blocks": blocks})
+
+    return {"route_key": route_key, "slots": slots}

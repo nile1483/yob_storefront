@@ -10,6 +10,40 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Content Blocks can now appear inside application pages (OpenAPI 3.5.0)
+
+**Additive.** `cms.get_page` and `/pages/:slug` are unchanged; no existing Page
+Block was migrated.
+
+**OLD** — a Content Block could only be reached through a merchant-authored
+Storefront Page. An application page such as the cart could show no merchant
+content at all.
+
+**CURRENT** — the SAME blocks can also be placed into application-owned slots:
+
+```
+cms.get_route_content(route_key)   every slot of one route, in one request
+```
+
+```jsonc
+{"route_key":"cart","slots":[
+  {"key":"above_cart","blocks":[ …ContentBlock… ]},
+  {"key":"below_cart","blocks":[]}]}
+```
+
+**FRONTEND ACTION** — call it **once per route**, not once per slot, and hand
+each slot to its own content-slot component. `blocks` is the identical
+`ContentBlock` union `get_page` already returns, so reuse the existing renderer
+verbatim; a slot component must not know which block types exist. Render an empty
+`blocks` as nothing. Treat any response containing a `product_grid` as
+customer-specific and never cache it across users.
+
+Angular owns where slots exist, the merchant owns what goes in them — adding a
+slot is a code change in both repositories. `openapi.json` publishes the
+route→slots table as `x-route-slots` so the constants can be generated. Login,
+checkout, payment and the payment callback have no slots by decision and answer
+the new `content_route_unknown`.
+
 ## 0. Content block schemas are now typed (OpenAPI 3.4.1)
 
 **Documentation only — no runtime change.** `cms.get_page` returns exactly what

@@ -1335,6 +1335,37 @@
       },
       "description": "AUTH\n\nPublished page with ordered, discriminated blocks. Product Grid cards are CUSTOMER-PRICED, so never cache this response across customers.\n\nSwitch on `type`, never on which nullable fields are set. Carousel `slides` and promo `cards` are typed rows (BannerCarouselSlide / PromoCard in openapi.json) sharing one media + destination shape, in the merchant's row order. `desktop_height_px`/`mobile_height_px` appear on image_banner, banner_carousel and promo_grid only -- a product_grid is sized by its cards."
      }
+    },
+    {
+     "name": "[AUTH] get_route_content",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.cms.get_route_content?route_key=cart",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.cms.get_route_content"
+       ],
+       "query": [
+        {
+         "key": "route_key",
+         "value": "cart",
+         "description": "home | catalog | category | product | cart | account | orders | order_detail"
+        }
+       ]
+      },
+      "description": "AUTH\n\nAll merchant content for ONE application page, in one request. Slots are application-owned: Angular decides where they are, the merchant decides what goes in them.\n\n`blocks` is the same discriminated ContentBlock union get_page returns. Every declared slot comes back, empty ones included.\n\nA slot may hold a Product Grid, so the response is CUSTOMER-PRICED -- never cache it across customers. Checkout and payment routes have no slots and answer content_route_unknown."
+     }
     }
    ]
   }

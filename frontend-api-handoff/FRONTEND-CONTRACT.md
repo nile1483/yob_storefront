@@ -60,6 +60,7 @@ No body. Requires CSRF.
 | `catalog.get_category_filters` | GET | `scope_value` (category slug) |
 | `cms.get_menu` | GET | `menu_key` |
 | `cms.get_page` | GET | `slug` |
+| `cms.get_route_content` | GET | `route_key` |
 | `cms.get_config` | GET | — |
 
 `qty` exists because pricing is quantity-dependent — the server returns the
@@ -178,6 +179,60 @@ answers `category: null` and `items: []`; it never falls back to other products.
 
 **Caching.** Menus are customer-independent. A page containing a Product Grid is
 **customer-priced** — never cache or share that response across users.
+
+### System route content (Phase 25G)
+
+The same reusable Content Blocks can also appear at fixed positions inside
+**existing application pages** — above the cart, below a product — without those
+pages knowing what a block is.
+
+**`cms.get_route_content(route_key)`** returns every slot of one route at once:
+
+```jsonc
+{"route_key":"cart","slots":[
+  {"key":"above_cart","blocks":[ {"type":"rich_text", …} ]},
+  {"key":"below_cart","blocks":[]}]}
+```
+
+**One request per ROUTE, never per slot.** Ask once when the page loads and hand
+each slot to its own `<yob-content-slot>`.
+
+**`blocks` is the identical `ContentBlock` union `cms.get_page` returns** —
+same projector, same five types, same fields. A renderer written for
+`/pages/:slug` works here with no changes, and it must not learn which mechanism
+placed a block.
+
+**Every declared slot is returned, empty ones included.** An empty `blocks` is
+normal, not an error; render nothing. The stable shape means you never have to
+test whether a key exists.
+
+**Angular owns where slots are; the merchant owns what is in them.** A merchant
+cannot create a route or invent a position — they choose among the positions the
+application already renders, and order the blocks inside one. Adding a slot is a
+code change in both repositories.
+
+| `route_key` | Slots, in render order |
+|---|---|
+| `home` | `hero`, `main`, `bottom` |
+| `catalog` | `above_listing`, `below_listing` |
+| `category` | `above_listing`, `below_listing` |
+| `product` | `above_product`, `below_product` |
+| `cart` | `above_cart`, `below_cart` |
+| `account` | `above_content`, `below_content` |
+| `orders` | `above_list`, `below_list` |
+| `order_detail` | `above_order`, `below_order` |
+
+`openapi.json` carries the same table as `x-route-slots`, so slot constants can
+be generated rather than transcribed.
+
+**Login, checkout, payment and the payment callback have no slots** and answer
+`content_route_unknown`. That is a deliberate exclusion — no merchant content
+around a credential form or between cart and payment.
+
+**Caching.** A slot may hold a Product Grid, which is priced for the buyer
+looking at it, so this response is **customer-specific** — never cache or share
+it across users. At most three Product Grids exist across a whole route, enforced
+when the merchant saves, so the response stays bounded.
 
 ### Variant families
 

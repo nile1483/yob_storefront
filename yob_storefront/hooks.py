@@ -52,6 +52,10 @@ app_include_js = "/assets/yob_storefront/js/yob.js"
 # cannot be reviewed in a pull request. These files migrate with the app.
 doctype_js = {
     "Item": "public/js/item_storefront_filters.js",
+    # Dependent Route -> Position picker. Convenience only; the placement
+    # controller re-validates the pair against the same registry on save.
+    "YOB Storefront Content Placement":
+        "public/js/yob_storefront_content_placement.js",
 }
 
 doctype_tree_js = {

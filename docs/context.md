@@ -971,6 +971,49 @@ invalidation on every Menu, Page, Block, Category and Filter save.
 > so its one-hour cache never serves anything. Left alone deliberately — it is a
 > separate contract with its own tests.
 
+## System route content placements (Phase 25G)
+
+The same reusable Blocks, at fixed positions inside EXISTING application pages —
+above the cart, below a product — without those pages knowing what a block is.
+
+**Not a page builder.** Angular owns which routes exist and where a
+`<yob-content-slot>` sits in each; a merchant owns what goes in a slot and in
+what order. Nobody can create a route or a position from Desk: that is a code
+change in both repositories.
+
+```text
+                    YOB Storefront Block
+              +------------+------------+
+      Storefront Page Block      Content Placement
+       /pages/:slug              /cart, /orders, ...
+```
+
+`utils/system_slots.py` is the one registry — DocType validation, Desk pickers,
+runtime projection, OpenAPI enums and tests all read it. Eight routes: `home`
+(reserved; `/` still redirects to `/catalog`), `catalog`, `category`, `product`,
+`cart`, `account`, `orders`, `order_detail`. `login`, `checkout`, `payment` and
+`payment_callback` are excluded **by decision**, with reasons recorded in
+`EXCLUDED_ROUTES` rather than silently omitted.
+
+Validation is on the **(route, slot) pair**: `cart` is real and `above_listing`
+is real, but `cart.above_listing` is rendered nowhere, so content stored there
+would never appear. An exact `(route, slot, block)` duplicate is refused; the
+same Block in another slot, on another route, or on a Page as well is the point
+of the design and stays allowed.
+
+`cms.get_route_content(route_key)` returns EVERY declared slot, empty ones
+included, in one request — never one request per slot. `blocks` is the identical
+`ContentBlock` union `cms.get_page` returns, because both go through the same
+`project_block()`; a test asserts each of the five types is byte-identical
+through both mechanisms, and another asserts `route_content` never names a block
+type. An unknown route answers `content_route_unknown` and is never mapped to a
+neighbour.
+
+`MAX_PRODUCT_GRIDS = 3` now lives in `utils/storefront_content.py` and is shared
+by both placement mechanisms. For a route it counts **across the whole route**,
+not per slot, because one response carries every slot. No caching, for the same
+reason as `get_page`: a grid is priced for the buyer looking at it.
+
 ## Chain verification (Phase 25F)
 
 Not a feature. `tests/test_storefront_chain.py` walks the whole storefront in one

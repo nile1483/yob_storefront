@@ -35,6 +35,16 @@ ALLOWED_SCHEMES = {"http", "https"}
 #: leave the storefront entirely.
 INTERNAL_ROUTE = re.compile(r"^/(?!/)[A-Za-z0-9/_\-.~%?=&+:@]*$")
 
+#: At most three Product Grids in ONE rendered content context, at most twelve
+#: items each: 36 priced items is what a single request can build inside the
+#: Phase 22B performance envelope.
+#:
+#: It lives here, not beside either placement mechanism, because there are now
+#: two of them -- a Storefront Page and a route's System Content Placements --
+#: and a buyer paying for a slow response does not care which one produced it.
+#: Two copies of "3" would drift the first time one was tuned.
+MAX_PRODUCT_GRIDS = 3
+
 #: Slug / key shapes. Deliberately narrow: these become URL segments.
 KEY_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MACHINE_KEY_PATTERN = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")

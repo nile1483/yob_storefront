@@ -22,6 +22,7 @@ storefront_filter_invalid
 storefront_filter_unknown
 storefront_filter_value_unknown
 storefront_filter_context_required
+content_route_unknown
 contact_not_found
 contact_invalid
 contact_required

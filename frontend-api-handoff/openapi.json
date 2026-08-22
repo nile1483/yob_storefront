@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.4.1",
+  "version": "3.5.0",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -1445,6 +1445,127 @@
        }
       }
      }
+    }
+   },
+   "ContentSlot": {
+    "type": "object",
+    "description": "One application-owned position on a route, with the merchant content placed in it. `blocks` is often empty and that is normal, not an error: EVERY slot the route declares is returned so a client can render `slots` without first checking whether a key exists.",
+    "required": [
+     "key",
+     "blocks"
+    ],
+    "properties": {
+     "key": {
+      "type": "string",
+      "enum": [
+       "above_cart",
+       "above_content",
+       "above_list",
+       "above_listing",
+       "above_order",
+       "above_product",
+       "below_cart",
+       "below_content",
+       "below_list",
+       "below_listing",
+       "below_order",
+       "below_product",
+       "bottom",
+       "hero",
+       "main"
+      ],
+      "description": "Slot key, unique WITHIN its route. The same key may appear on more than one route (`above_listing` is on both `catalog` and `category`); it is the (route, slot) PAIR that identifies a position."
+     },
+     "blocks": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ContentBlock"
+      },
+      "description": "In the merchant's order (`sequence`, then a stable tie-break). The IDENTICAL ContentBlock union `cms.get_page` returns -- one projector serves both, so a renderer written for pages needs no changes."
+     }
+    }
+   },
+   "RouteContentResponse": {
+    "type": "object",
+    "required": [
+     "message"
+    ],
+    "properties": {
+     "message": {
+      "type": "object",
+      "required": [
+       "data"
+      ],
+      "properties": {
+       "data": {
+        "type": "object",
+        "required": [
+         "route_key",
+         "slots"
+        ],
+        "properties": {
+         "route_key": {
+          "type": "string",
+          "enum": [
+           "home",
+           "catalog",
+           "category",
+           "product",
+           "cart",
+           "account",
+           "orders",
+           "order_detail"
+          ]
+         },
+         "slots": {
+          "type": "array",
+          "items": {
+           "$ref": "#/components/schemas/ContentSlot"
+          },
+          "description": "Every slot the route declares, in render order."
+         }
+        }
+       },
+       "notice": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "x-route-slots": {
+     "home": [
+      "hero",
+      "main",
+      "bottom"
+     ],
+     "catalog": [
+      "above_listing",
+      "below_listing"
+     ],
+     "category": [
+      "above_listing",
+      "below_listing"
+     ],
+     "product": [
+      "above_product",
+      "below_product"
+     ],
+     "cart": [
+      "above_cart",
+      "below_cart"
+     ],
+     "account": [
+      "above_content",
+      "below_content"
+     ],
+     "orders": [
+      "above_list",
+      "below_list"
+     ],
+     "order_detail": [
+      "above_order",
+      "below_order"
+     ]
     }
    }
   }
@@ -4737,6 +4858,89 @@
      },
      "4XX": {
       "description": "`page_not_found` (404) -- unknown OR unpublished.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/method/yob_storefront.api.cms.get_route_content": {
+   "get": {
+    "tags": [
+     "cms"
+    ],
+    "summary": "Merchant content for one application route",
+    "description": "Every content slot of ONE application page, in a single request.\n\nSlots are **application-owned**: Angular decides which routes exist and where a `<yob-content-slot>` sits inside each. A merchant chooses WHAT goes in a slot and in what ORDER, never where a slot is. This is not a page builder.\n\n`blocks` is the SAME `ContentBlock` union `cms.get_page` returns, produced by the same projector -- a renderer written for pages works here unchanged.\n\n**Customer-specific.** A slot may hold a Product Grid, which is priced through the buyer's own context, so this response must never be cached across customers.\n\nLogin, checkout, payment and the payment callback deliberately have no slots and answer `content_route_unknown`.",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "route_key",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "home",
+        "catalog",
+        "category",
+        "product",
+        "cart",
+        "account",
+        "orders",
+        "order_detail"
+       ]
+      },
+      "description": "Which application page. Unknown values are refused, never mapped to a neighbouring route."
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Every declared slot for the route, empty ones included.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RouteContentResponse"
+        },
+        "example": {
+         "message": {
+          "data": {
+           "route_key": "cart",
+           "slots": [
+            {
+             "key": "above_cart",
+             "blocks": [
+              {
+               "type": "rich_text",
+               "block_name": "Monsoon notice",
+               "title": "Free delivery",
+               "html": "<p>On orders over 5000.</p>",
+               "text_alignment": "center"
+              }
+             ]
+            },
+            {
+             "key": "below_cart",
+             "blocks": []
+            }
+           ]
+          },
+          "notice": "Route content loaded"
+         }
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "`validation_failed` (no route_key) or `content_route_unknown` (not a content-bearing route).",
       "content": {
        "application/json": {
         "schema": {

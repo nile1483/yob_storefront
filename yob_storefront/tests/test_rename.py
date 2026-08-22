@@ -196,6 +196,11 @@ class TestEndpointProtection(unittest.TestCase):
         "filters_in_set",
         "get_children",
         "add_node",
+        # Phase 25G: the dependent Route -> Position pickers. They return
+        # application structure rather than business data, and are still gated on
+        # read access to the DocType that uses them.
+        "get_route_options",
+        "get_slot_options",
     }
 
     def _endpoints(self):

@@ -32,6 +32,8 @@ READ_ONLY = {
     # through the existing catalogue service into throwaway in-memory Sales
     # Orders, exactly as `get_items` does; nothing is stored.
     "catalog.get_category_filters", "cms.get_menu", "cms.get_page",
+    # Phase 25G: the same read, addressed by application route instead of slug.
+    "cms.get_route_content",
     "payment.get_checkout_data", "payment_method.get_payment_methods",
 }
 
