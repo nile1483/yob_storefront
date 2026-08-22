@@ -141,7 +141,22 @@ class InstallCase(unittest.TestCase):
             frappe.db.exists("Client Script", {"dt": "Item", "enabled": 1}),
             "an Item Client Script exists; storefront Desk logic must ship as app files")
 
-    def test_the_workspace_exposes_the_new_administration(self):
+    #: The Phase 25 administration, as it must appear in BOTH Desk structures.
+    PHASE_25_GROUPS = ("Catalog Filters", "Navigation", "Content")
+    PHASE_25_DOCTYPES = (
+        "YOB Storefront Filter", "YOB Storefront Filter Value",
+        "YOB Storefront Filter Set", "YOB Storefront Menu",
+        "YOB Storefront Menu Item", "YOB Storefront Page", "YOB Storefront Block",
+    )
+
+    def test_the_workspace_page_exposes_the_new_administration(self):
+        """The CENTRE of the Workspace page: `Workspace Link` cards.
+
+        This is only half of Desk. See the sidebar test below -- the two are
+        different DocTypes fed by different files, and passing this one says
+        nothing at all about the left sidebar.
+        """
+
         links = frappe.get_all(
             "Workspace Link", filters={"parent": "YOB Storefront"},
             fields=["label", "type", "link_to"], order_by="idx")
@@ -149,14 +164,102 @@ class InstallCase(unittest.TestCase):
         cards = {row.label for row in links if row.type == "Card Break"}
         targets = {row.link_to for row in links if row.type == "Link"}
 
-        for card in ("Catalog Filters", "Navigation", "Content"):
-            self.assertIn(card, cards, f"the workspace has no {card} section")
+        for card in self.PHASE_25_GROUPS:
+            self.assertIn(card, cards, f"the workspace page has no {card} section")
 
-        for doctype in ("YOB Storefront Filter", "YOB Storefront Filter Value",
-                        "YOB Storefront Filter Set", "YOB Storefront Menu",
-                        "YOB Storefront Menu Item", "YOB Storefront Page",
-                        "YOB Storefront Block"):
-            self.assertIn(doctype, targets, f"{doctype} is not reachable from the workspace")
+        for doctype in self.PHASE_25_DOCTYPES:
+            self.assertIn(doctype, targets,
+                          f"{doctype} is not reachable from the workspace page")
+
+    def test_the_left_sidebar_exposes_the_new_administration(self):
+        """The LEFT DESK SIDEBAR: `Workspace Sidebar` / `Workspace Sidebar Item`.
+
+        THE DEFECT THIS CLOSES
+        ----------------------
+        Phase 25B reported that "the existing Workspace gained Catalog Filters,
+        Navigation and Content sections", and its test agreed -- but the test
+        only ever read `Workspace Link`, the cards drawn in the MIDDLE of the
+        workspace page. Frappe v16 draws the left sidebar from an entirely
+        separate DocType, loaded from a separate app-level file
+        (`yob_storefront/workspace_sidebar/yob_storefront.json`), which Phase 25B
+        never touched. Both structures were internally consistent, so nothing
+        failed; the sidebar simply never gained the three groups, and on
+        `yob.localhost` it still showed the pre-Phase-25 list.
+
+        Asserting the same labels against the OTHER DocType is the whole point.
+        """
+
+        items = frappe.get_all(
+            "Workspace Sidebar Item", filters={"parent": "YOB Storefront"},
+            fields=["label", "type", "link_to"], order_by="idx")
+
+        self.assertTrue(items, "the storefront has no left sidebar at all")
+
+        groups = {row.label for row in items if row.type == "Section Break"}
+        targets = {row.link_to for row in items if row.type == "Link"}
+
+        for group in self.PHASE_25_GROUPS:
+            self.assertIn(group, groups, f"the LEFT SIDEBAR has no {group} group")
+
+        for doctype in self.PHASE_25_DOCTYPES:
+            self.assertIn(doctype, targets,
+                          f"{doctype} is not reachable from the LEFT SIDEBAR")
+
+    def test_the_sidebar_keeps_everything_it_had_before_phase_25(self):
+        """Adding groups must not quietly drop the ones already there."""
+
+        items = frappe.get_all(
+            "Workspace Sidebar Item", filters={"parent": "YOB Storefront"},
+            fields=["label", "type", "link_to"], order_by="idx")
+
+        groups = {row.label for row in items if row.type == "Section Break"}
+        targets = {row.link_to for row in items if row.type == "Link"}
+
+        for group in ("Catalog", "Orders", "Payments"):
+            self.assertIn(group, groups, f"the pre-existing {group} group was lost")
+
+        for doctype in ("YOB Store Settings", "Category", "Item", "Item Price",
+                        "Pricing Rule", "Cart", "Customer", "Payment Method",
+                        "Payment Method Assignment", "Razorpay Payment Log"):
+            self.assertIn(doctype, targets, f"the pre-existing {doctype} link was lost")
+
+    def test_the_sidebar_source_is_app_owned_and_synchronises(self):
+        """The file must be where Frappe looks, and newer than the stored row.
+
+        `sync_for` reads `workspace_sidebar` as an APP-LEVEL folder, and
+        `import_file_by_path` SKIPS a non-DocType record whose file `modified` is
+        not newer than the row already in the database. An edit that forgets to
+        bump the timestamp installs on a fresh site and silently does nothing on
+        every existing one -- which is exactly the failure mode a merchant sees.
+        """
+
+        import json
+        import pathlib
+
+        path = (pathlib.Path(frappe.get_app_path("yob_storefront"))
+                / "workspace_sidebar" / "yob_storefront.json")
+
+        self.assertTrue(path.exists(),
+                        "the sidebar is not at the app-level path Frappe imports")
+
+        source = json.loads(path.read_text())
+
+        self.assertEqual(source["doctype"], "Workspace Sidebar")
+        self.assertEqual(source["name"], "YOB Storefront")
+
+        source_groups = {i.get("label") for i in source["items"]
+                         if i.get("type") == "Section Break"}
+        for group in self.PHASE_25_GROUPS:
+            self.assertIn(group, source_groups, f"the SOURCE file has no {group} group")
+
+        stored = frappe.db.get_value("Workspace Sidebar", "YOB Storefront", "modified")
+
+        if stored:
+            self.assertLessEqual(
+                frappe.utils.get_datetime(stored),
+                frappe.utils.get_datetime(source["modified"]),
+                "the stored sidebar is NEWER than the source file, so `bench migrate` "
+                "will skip it -- bump `modified` in the JSON")
 
     def test_only_one_storefront_workspace_exists(self):
         self.assertEqual(
