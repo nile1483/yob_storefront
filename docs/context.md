@@ -733,7 +733,8 @@ unroutable is offered.
 ### The published contract (Phase 24D-1)
 
 The canonical reference is `frontend-api-handoff/` — markdown, `openapi.json`
-(**3.3.0**), `postman_collection.json` and examples — mirrored into the Angular
+(**3.4.1** today; **3.3.0** when Phase 24D-1 published it),
+`postman_collection.json` and examples — mirrored into the Angular
 repo at `docs/api-handoff/` and `reference/api/`. Phase 24D-1 published what
 production actually does: `catalog.resolve_variant` (new), `catalog.get_item`'s
 two discriminated modes, `catalog.get_items` (which had shipped in Phase 22B
@@ -949,7 +950,11 @@ uses, so grid cards ARE `ListingCard` rows: simple items priced normally, varian
 families `price_state: select_options` with no borrowed child price.
 `content_service` contains no Item query, no Item Price lookup, no Pricing Rule
 evaluation, no UOM, warehouse or stock arithmetic — asserted by an executable-code
-scan. A grid whose category was disabled or turned into a group answers
+scan. The published block schemas are asserted against blocks the
+runtime actually **projected** (Phase 25C-1), so `slides`/`cards` are typed rows
+(`BannerCarouselSlide` / `PromoCard`) and `x-block-fields` records which fields
+each type carries — heights on `image_banner`, `banner_carousel` and `promo_grid`
+only. A grid whose category was disabled or turned into a group answers
 `category: null` with an empty `items`, and **never** falls back to other products.
 
 ### Caching

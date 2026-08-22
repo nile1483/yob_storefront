@@ -1333,7 +1333,7 @@
         }
        ]
       },
-      "description": "AUTH\n\nPublished page with ordered, discriminated blocks. Product Grid cards are CUSTOMER-PRICED, so never cache this response across customers."
+      "description": "AUTH\n\nPublished page with ordered, discriminated blocks. Product Grid cards are CUSTOMER-PRICED, so never cache this response across customers.\n\nSwitch on `type`, never on which nullable fields are set. Carousel `slides` and promo `cards` are typed rows (BannerCarouselSlide / PromoCard in openapi.json) sharing one media + destination shape, in the merchant's row order. `desktop_height_px`/`mobile_height_px` appear on image_banner, banner_carousel and promo_grid only -- a product_grid is sized by its cards."
      }
     }
    ]

@@ -10,6 +10,29 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Content block schemas are now typed (OpenAPI 3.4.1)
+
+**Documentation only — no runtime change.** `cms.get_page` returns exactly what
+it returned in 3.4.0.
+
+**OLD** — `slides` and `cards` were published as `array<object>`: an array of
+something. `desktop_height_px` / `mobile_height_px` were listed once, under the
+image-banner group, without saying which other block types return them.
+
+**CURRENT** — two real schemas, `BannerCarouselSlide` and `PromoCard`, both
+`{desktop_image, mobile_image, title, alt_text, destination}` with every key
+always present, referenced from `slides` and `cards`. Every `ContentBlock`
+property now names the block types that carry it, and the height fields are
+documented as belonging to `image_banner`, `banner_carousel` and `promo_grid`
+only — never `rich_text` or `product_grid`. `MenuItem.children` is likewise a
+real self-reference instead of `array<object>`.
+
+**FRONTEND ACTION** — sync the 3.4.1 reference and confirm your existing DTOs
+match; there is nothing to re-implement. If you hand-wrote a slide or card type,
+regenerate it from the schema now that one exists. A guard test asserts the
+published schemas against blocks the runtime actually projected, so this cannot
+drift again.
+
 ## 0. Storefront navigation, filters and content pages (Phase 25C)
 
 **OLD** — navigation was hard-coded in the SPA, there were no merchandising

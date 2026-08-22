@@ -149,6 +149,27 @@ changes** — a cursor replayed under a different selection answers
 Switch on `type` — never on which nullable fields happen to be set. Slides and
 cards arrive in the merchant's order; do not re-sort.
 
+**Slides and cards are typed rows.** A carousel slide (`BannerCarouselSlide`) and
+a promo card (`PromoCard`) are the same shape — one media pair, a caption and a
+shared destination — and both are fully defined in `openapi.json`, so generate
+the DTOs rather than hand-writing them:
+
+```jsonc
+{"desktop_image":"/files/s.png","mobile_image":"/files/s-sm.png",
+ "title":"Monsoon offer","alt_text":"…","destination":{…}}
+```
+
+All five keys are always present; each may be `null` except the destination rule
+already described. Images are **relative paths** (`/files/…`), matching the
+catalogue convention — do not expect an absolute URL. Fall back to
+`desktop_image` when `mobile_image` is null.
+
+**Height fields.** `desktop_height_px` and `mobile_height_px` are returned on
+`image_banner`, `banner_carousel` and `promo_grid` **only** — a `product_grid` is
+sized by its cards and a `rich_text` by its content, and neither carries them at
+all. `null` means the merchant set no height: apply your own default rather than
+collapsing the element to zero.
+
 **Product Grid items are ordinary `ListingCard` rows**, produced by the same
 catalogue service as `get_items`: simple items are `price_state: "priced"`, and a
 variant family is `price_state: "select_options"` with every money field `null` —

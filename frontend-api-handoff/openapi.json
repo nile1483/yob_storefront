@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -1047,9 +1047,9 @@
      "children": {
       "type": "array",
       "items": {
-       "type": "object"
+       "$ref": "#/components/schemas/MenuItem"
       },
-      "description": "one level only; a leaf's children is always []"
+      "description": "one level only: a root Group carries leaves, and a leaf's `children` is always []. Recursive by schema, never by data -- a grandchild cannot be stored."
      }
     }
    },
@@ -1163,9 +1163,117 @@
      }
     }
    },
+   "BannerCarouselSlide": {
+    "type": "object",
+    "description": "One slide of a `banner_carousel` block. Slides arrive in the merchant's own row order -- render them in the order given and do not re-sort. Every field except the images is optional content, and `destination` is null when the slide is not clickable OR its target is no longer publishable.",
+    "required": [
+     "desktop_image",
+     "mobile_image",
+     "title",
+     "alt_text",
+     "destination"
+    ],
+    "properties": {
+     "desktop_image": {
+      "type": "string",
+      "nullable": true,
+      "description": "relative path as stored, e.g. `/files/hero.png` -- the catalogue convention, never an absolute URL. Required in Desk, so non-null in practice; the projection still permits null and a client must not crash on it."
+     },
+     "mobile_image": {
+      "type": "string",
+      "nullable": true,
+      "description": "optional narrow-viewport art; fall back to `desktop_image` when null"
+     },
+     "title": {
+      "type": "string",
+      "nullable": true,
+      "description": "merchant caption; absent as often as not"
+     },
+     "alt_text": {
+      "type": "string",
+      "nullable": true
+     },
+     "destination": {
+      "$ref": "#/components/schemas/Destination"
+     }
+    }
+   },
+   "PromoCard": {
+    "type": "object",
+    "description": "One card of a `promo_grid` block. Structurally identical to `BannerCarouselSlide` -- both are the same merchant-authored media row with a shared destination -- but they are separate schemas because they are separate stored types and may diverge. Cards arrive in the merchant's own row order; do not re-sort. A promo card is merchandising art, NOT an ERPNext Pricing Rule: nothing here discounts anything.",
+    "required": [
+     "desktop_image",
+     "mobile_image",
+     "title",
+     "alt_text",
+     "destination"
+    ],
+    "properties": {
+     "desktop_image": {
+      "type": "string",
+      "nullable": true,
+      "description": "relative path as stored, e.g. `/files/hero.png` -- the catalogue convention, never an absolute URL. Required in Desk, so non-null in practice; the projection still permits null and a client must not crash on it."
+     },
+     "mobile_image": {
+      "type": "string",
+      "nullable": true,
+      "description": "optional narrow-viewport art; fall back to `desktop_image` when null"
+     },
+     "title": {
+      "type": "string",
+      "nullable": true,
+      "description": "merchant caption; absent as often as not"
+     },
+     "alt_text": {
+      "type": "string",
+      "nullable": true
+     },
+     "destination": {
+      "$ref": "#/components/schemas/Destination"
+     }
+    }
+   },
    "ContentBlock": {
     "type": "object",
-    "description": "Discriminated by `type`. Each block carries ONLY its own type's fields -- never infer the kind from which nullable fields are set.",
+    "description": "Discriminated by `type`. Each block carries ONLY its own type's fields -- never infer the kind from which nullable fields are set. `type` and `block_name` are present on every block; every other property below names the block types that actually carry it, and a client must not read a property outside those types.\n\nPer type, the fields the runtime always emits:\n* `image_banner` -- desktop_image, mobile_image, alt_text, desktop_height_px, mobile_height_px, destination\n* `rich_text` -- title, html, text_alignment\n* `banner_carousel` -- auto_play, interval_ms, desktop_height_px, mobile_height_px, slides\n* `promo_grid` -- cards_per_row, desktop_height_px, mobile_height_px, cards\n* `product_grid` -- card_type, item_limit, category, items (NO height fields: a grid is sized by its cards, not by a merchant-set pixel height)",
+    "x-block-always-present": [
+     "type",
+     "block_name"
+    ],
+    "x-block-fields": {
+     "image_banner": [
+      "desktop_image",
+      "mobile_image",
+      "alt_text",
+      "desktop_height_px",
+      "mobile_height_px",
+      "destination"
+     ],
+     "rich_text": [
+      "title",
+      "html",
+      "text_alignment"
+     ],
+     "banner_carousel": [
+      "auto_play",
+      "interval_ms",
+      "desktop_height_px",
+      "mobile_height_px",
+      "slides"
+     ],
+     "promo_grid": [
+      "cards_per_row",
+      "desktop_height_px",
+      "mobile_height_px",
+      "cards"
+     ],
+     "product_grid": [
+      "card_type",
+      "item_limit",
+      "category",
+      "items"
+     ]
+    },
     "required": [
      "type",
      "block_name"
@@ -1187,68 +1295,82 @@
      "desktop_image": {
       "type": "string",
       "nullable": true,
-      "description": "image_banner"
+      "description": "`image_banner` only. Relative path as stored, e.g. `/files/hero.png` -- the catalogue convention, never an absolute URL."
      },
      "mobile_image": {
       "type": "string",
-      "nullable": true
+      "nullable": true,
+      "description": "`image_banner` only. Fall back to `desktop_image` when null."
      },
      "alt_text": {
       "type": "string",
-      "nullable": true
+      "nullable": true,
+      "description": "`image_banner` only."
      },
      "desktop_height_px": {
       "type": "integer",
-      "nullable": true
+      "nullable": true,
+      "description": "`image_banner`, `banner_carousel` and `promo_grid`. The merchant's chosen media height in CSS pixels; null means unset, so use your own default rather than collapsing to zero. Absent entirely on `rich_text` and `product_grid`."
      },
      "mobile_height_px": {
       "type": "integer",
-      "nullable": true
+      "nullable": true,
+      "description": "`image_banner`, `banner_carousel` and `promo_grid`. The merchant's chosen media height in CSS pixels; null means unset, so use your own default rather than collapsing to zero. Absent entirely on `rich_text` and `product_grid`."
      },
      "destination": {
-      "$ref": "#/components/schemas/Destination"
+      "$ref": "#/components/schemas/Destination",
+      "description": "`image_banner` only. Slides and cards carry their own."
      },
      "title": {
       "type": "string",
       "nullable": true,
-      "description": "rich_text"
+      "description": "`rich_text` only -- the block heading. Slides and promo cards have their own `title`."
      },
      "html": {
       "type": "string",
-      "description": "sanitised server-side; still render through your own trusted-HTML policy"
+      "description": "`rich_text` only. Sanitised server-side on save; still render through your own trusted-HTML policy -- this is the first boundary, not the only one."
      },
      "text_alignment": {
       "type": "string",
       "enum": [
        "left",
        "center"
-      ]
+      ],
+      "description": "`rich_text` only."
      },
      "auto_play": {
       "type": "boolean",
-      "description": "banner_carousel"
+      "description": "`banner_carousel` only."
      },
      "interval_ms": {
       "type": "integer",
-      "nullable": true
+      "nullable": true,
+      "description": "`banner_carousel` only. Null means unset -- choose your own interval."
      },
      "slides": {
       "type": "array",
       "items": {
-       "type": "object"
+       "$ref": "#/components/schemas/BannerCarouselSlide"
       },
-      "description": "ordered by the merchant's row order"
+      "description": "`banner_carousel` only. In the merchant's row order; do not re-sort."
      },
      "cards_per_row": {
       "type": "integer",
       "nullable": true,
-      "description": "promo_grid"
+      "enum": [
+       1,
+       2,
+       3,
+       null
+      ],
+      "description": "`promo_grid` only. A layout hint of 1, 2 or 3; null means unset."
      },
      "cards": {
       "type": "array",
       "items": {
-       "type": "object"
-      }
+       "$ref": "#/components/schemas/PromoCard"
+      },
+      "description": "`promo_grid` only. In the merchant's row order; do not re-sort."
      },
      "card_type": {
       "type": "string",
@@ -1256,22 +1378,23 @@
        "square",
        "portrait"
       ],
-      "description": "product_grid"
+      "description": "`product_grid` only."
      },
      "item_limit": {
-      "type": "integer"
+      "type": "integer",
+      "description": "`product_grid` only. The merchant's configured cap, 1..12. `items` may be SHORTER when the category holds fewer eligible products; it is never longer."
      },
      "category": {
       "type": "string",
       "nullable": true,
-      "description": "null when the configured category became unusable; `items` is then empty and NEVER a fallback listing"
+      "description": "`product_grid` only. The category's public slug, or null when the configured category became unusable (disabled, or turned into a group) -- `items` is then empty and NEVER a fallback listing."
      },
      "items": {
       "type": "array",
       "items": {
        "$ref": "#/components/schemas/ListingCard"
       },
-      "description": "the SAME ListingCard the catalogue returns, produced by the same service: customer-priced, family cards carry `price_state: select_options`"
+      "description": "`product_grid` only. The SAME ListingCard the catalogue returns, produced by the same service: customer-priced, family cards carry `price_state: select_options` with every money field null."
      }
     }
    },

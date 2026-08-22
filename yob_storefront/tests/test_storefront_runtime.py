@@ -20,6 +20,7 @@ and a public slug, never `link_category` / `link_page` / `link_item`.
 
 import inspect
 import json
+import pathlib
 import unittest
 from unittest.mock import patch
 
@@ -1148,3 +1149,137 @@ class ProductGridRuntimeCase(RuntimeBase):
         self.assertEqual(first, 100)
         self.assertEqual(second, 777,
                          "a second customer received the first customer's price")
+
+
+# =========================================================
+# PUBLISHED SHAPE (Phase 25C-1)
+# =========================================================
+
+class PublishedBlockShapeCase(RuntimeBase):
+    """The published block schemas must describe the blocks production emits.
+
+    The Phase 24D-1 guard checks that every endpoint and error code is published;
+    it says nothing about SHAPE, and Phase 25C shipped `slides` and `cards` as
+    bare `array<object>` -- documented as "an array of something". A client cannot
+    generate a DTO from that, so it hand-writes one and the two drift silently.
+
+    This asserts against blocks that were actually PROJECTED, not against the
+    source: a projector that starts emitting a field nobody published fails here,
+    which is the drift that matters.
+    """
+
+    HANDOFF = (pathlib.Path(frappe.get_app_path("yob_storefront")).parent
+               / "frontend-api-handoff" / "openapi.json")
+
+    def schemas(self):
+        if not self.HANDOFF.exists():
+            self.skipTest("no published OpenAPI document in this checkout")
+        return json.loads(self.HANDOFF.read_text())["components"]["schemas"]
+
+    def every_block(self):
+        """One page carrying all five types, each fully populated."""
+
+        category = self.make_category(slug="r25-shape-cat")
+        media = {"desktop_image": "/files/d.png", "mobile_image": "/files/m.png",
+                 "title": "Card", "alt_text": "alt", "link_type": "Catalog"}
+
+        blocks = [
+            self.make_block("Image Banner", block_name="_R25 SHAPE IB",
+                            desktop_image="/files/d.png", mobile_image="/files/m.png",
+                            alt_text="alt", desktop_height_px=400,
+                            mobile_height_px=200, link_type="Catalog"),
+            self.make_block("Rich Text", block_name="_R25 SHAPE RT",
+                            content_title="T", content="<p>x</p>",
+                            text_alignment="Center"),
+            self.make_block("Banner Carousel", block_name="_R25 SHAPE BC",
+                            auto_play=1, interval_ms=4000, desktop_height_px=400,
+                            mobile_height_px=200, slides=[dict(media)]),
+            self.make_block("Promo Grid", block_name="_R25 SHAPE PM",
+                            cards_per_row="3", desktop_height_px=400,
+                            mobile_height_px=200, promo_cards=[dict(media)]),
+            self.make_block("Product Grid", block_name="_R25 SHAPE PG",
+                            storefront_category=category.name, item_limit=6),
+        ]
+        self.make_page(slug="r25-shape", blocks=[{"block": b.name} for b in blocks])
+
+        return {b["type"]: b for b in self.data(self.page("r25-shape"))["blocks"]}
+
+    def test_every_type_carries_exactly_the_published_fields(self):
+        """`x-block-fields` is the contract; the projection is the truth.
+
+        Compared as a whole map, so a field the runtime gained AND a field the
+        contract invented both fail -- and the failure names the type.
+        """
+
+        block_schema = self.schemas()["ContentBlock"]
+        published = block_schema["x-block-fields"]
+        always = set(block_schema["x-block-always-present"])
+        blocks = self.every_block()
+
+        self.assertEqual(set(blocks), set(published),
+                         "the published block types are not the types projected")
+
+        for block_type, block in blocks.items():
+            self.assertEqual(
+                set(block) - always, set(published[block_type]),
+                f"{block_type} does not carry the fields `x-block-fields` publishes")
+
+            self.assertEqual(always & set(block), always,
+                             f"{block_type} is missing a field every block must have")
+
+    def test_no_block_field_is_published_without_a_schema(self):
+        properties = self.schemas()["ContentBlock"]["properties"]
+
+        for block_type, block in self.every_block().items():
+            undocumented = sorted(set(block) - set(properties))
+
+            self.assertEqual(
+                undocumented, [],
+                f"{block_type} emits fields absent from the published ContentBlock")
+
+    def test_slides_and_cards_have_their_own_schemas(self):
+        schemas = self.schemas()
+        blocks = self.every_block()
+
+        for prop, schema_name, block_type in (
+                ("slides", "BannerCarouselSlide", "banner_carousel"),
+                ("cards", "PromoCard", "promo_grid")):
+
+            items = schemas["ContentBlock"]["properties"][prop]["items"]
+            self.assertEqual(
+                items, {"$ref": f"#/components/schemas/{schema_name}"},
+                f"`{prop}` is still an anonymous object; a client cannot type it")
+
+            row = blocks[block_type][prop][0]
+            schema = schemas[schema_name]
+
+            self.assertEqual(set(row), set(schema["properties"]),
+                             f"{schema_name} does not describe what {prop} carries")
+            self.assertEqual(set(schema["required"]), set(row),
+                             f"{schema_name} must mark every always-present key required")
+
+    def test_height_fields_are_published_for_exactly_the_types_that_carry_them(self):
+        published = self.schemas()["ContentBlock"]["x-block-fields"]
+        blocks = self.every_block()
+
+        for field in ("desktop_height_px", "mobile_height_px"):
+            documented = {t for t, fields in published.items() if field in fields}
+            actual = {t for t, block in blocks.items() if field in block}
+
+            self.assertEqual(
+                documented, actual,
+                f"{field}: published for {sorted(documented)}, returned for "
+                f"{sorted(actual)}")
+
+            self.assertEqual(
+                actual, {"image_banner", "banner_carousel", "promo_grid"},
+                f"{field} moved to another block type; the contract needs a decision, "
+                f"not a silent update")
+
+    def test_a_grid_is_never_given_a_merchant_height(self):
+        """The one asymmetry worth pinning: a grid is sized by its cards."""
+
+        grid = self.every_block()["product_grid"]
+
+        self.assertNotIn("desktop_height_px", grid)
+        self.assertNotIn("mobile_height_px", grid)
