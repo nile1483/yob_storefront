@@ -7,45 +7,56 @@
  "engine": "InnoDB",
  "field_order": [
   "block",
+  "section_style",
   "sequence",
   "enabled"
  ],
  "fields": [
   {
+   "columns": 3,
    "fieldname": "block",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Block",
    "options": "YOB Storefront Block",
-   "reqd": 1,
-   "in_list_view": 1,
-   "columns": 5
+   "reqd": 1
   },
   {
+   "columns": 2,
+   "default": "default",
+   "description": "The band this block sits in. A semantic choice only -- Angular owns the actual colour, padding and full-width behaviour. Set per PLACEMENT, so the same Block can be muted here and dark elsewhere.",
+   "fieldname": "section_style",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Section Style",
+   "options": "default\nmuted\nbrand_soft\naccent\ndark"
+  },
+  {
+   "columns": 2,
    "fieldname": "sequence",
    "fieldtype": "Int",
-   "label": "Sequence",
    "in_list_view": 1,
-   "columns": 2
+   "label": "Sequence"
   },
   {
+   "columns": 1,
+   "default": "1",
    "fieldname": "enabled",
    "fieldtype": "Check",
-   "label": "Enabled",
-   "default": "1",
    "in_list_view": 1,
-   "columns": 1
+   "label": "Enabled"
   }
  ],
  "index_web_pages_for_search": 0,
+ "istable": 1,
  "links": [],
- "modified": "2026-08-21 12:00:00.000000",
+ "modified": "2026-08-26 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "yob_storefront",
  "name": "YOB Storefront Page Block",
  "owner": "Administrator",
+ "permissions": [],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": [],
- "istable": 1,
- "permissions": []
+ "states": []
 }

@@ -1014,6 +1014,32 @@ by both placement mechanisms. For a route it counts **across the whole route**,
 not per slot, because one response carries every slot. No caching, for the same
 reason as `get_page`: a grid is priced for the buyer looking at it.
 
+## Section styles on a placement (Phase 25I)
+
+Every projected block carries `section_style` — one of `default`, `muted`,
+`brand_soft`, `accent`, `dark` — naming the full-width band it sits in. Angular
+wraps the unchanged block renderer in a section of that style around the existing
+fixed-width container.
+
+**Semantic only.** The backend defines no colour, padding, breakpoint, text
+colour or width; it stores one approved word and refuses everything else — a
+Tailwind class, a CSS declaration and arbitrary text are all rejected at save.
+That closed vocabulary is what stops presentation becoming merchant-configurable.
+
+**It belongs to the PLACEMENT.** The field is on `YOB Storefront Page Block` and
+`YOB Storefront Content Placement`, never on `YOB Storefront Block`, because a
+Block is authored once and placed many times: the same `Welcome Text` may be
+muted on a page and dark on the home route. Storing it on the Block would force
+the two to agree and push merchants into duplicating content.
+
+`project_block(block, customer_doc, section_style)` applies it once beside `type`
+and `block_name`. No block-type projector sees it — a projector that knew `dark`
+meant white text would be Angular's job migrating into the backend, and a test
+scans for that. Page and route still share the one projector.
+
+A blank value normalises to `default` on the way out; nothing is rewritten, so
+rows predating the field render exactly as before with no data patch.
+
 ## Chain verification (Phase 25F)
 
 Not a feature. `tests/test_storefront_chain.py` walks the whole storefront in one

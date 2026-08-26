@@ -19,6 +19,12 @@ is the ONE function both go through, so the wire payload cannot depend on which
 mechanism placed the Block. A second projector would be a second contract, and
 the client union would quietly grow a dialect.
 
+The one thing a placement DOES contribute is `section_style` -- the semantic band
+the block sits in (Phase 25I). It is passed IN rather than read from the Block,
+because the same Block may be muted on a page and dark on a route. No block-type
+projector sees it: presentation is common metadata wrapped around the payload,
+never a branch inside one.
+
 PRODUCT GRID IS NOT A QUERY ENGINE
 ----------------------------------
 A grid is a stored, bounded question: one storefront Category, at most twelve
@@ -37,6 +43,7 @@ import frappe
 from frappe.utils import cint
 
 from yob_storefront.services.storefront_destination import project_destination
+from yob_storefront.utils.section_styles import normalise as normalise_style
 
 BLOCK_TYPES = {
     "Image Banner": "image_banner",
@@ -74,13 +81,13 @@ def get_page(slug, customer_doc):
     rows = frappe.get_all(
         "YOB Storefront Page Block",
         filters={"parent": page.name, "parenttype": "YOB Storefront Page", "enabled": 1},
-        fields=["block", "sequence", "idx"],
+        fields=["block", "sequence", "idx", "section_style"],
         order_by="sequence asc, idx asc", limit_page_length=0)
 
     blocks = []
 
     for row in rows:
-        projected = project_block(row.block, customer_doc)
+        projected = project_block(row.block, customer_doc, row.section_style)
         if projected:
             blocks.append(projected)
 
@@ -93,8 +100,22 @@ def get_page(slug, customer_doc):
     }
 
 
-def project_block(block_name, customer_doc):
-    """One block as its discriminated payload, or None when unusable."""
+def project_block(block_name, customer_doc, section_style=None):
+    """One block as its discriminated payload, or None when unusable.
+
+    `section_style` is the PLACEMENT's presentation key -- the band this block
+    sits in -- and is the only thing a placement contributes to the payload. It
+    is applied here, once, so that:
+
+    * every block type carries it without any type learning about it (a
+      `product_grid` projector that knew about `dark` would be the start of
+      style-specific business logic, which is Angular's job, not ours);
+    * a Page and a system route project the SAME block differently by passing a
+      different key, rather than by having different projectors.
+
+    A blank or unrecognised value normalises to `default`, so rows written before
+    the field existed render exactly as they always did.
+    """
 
     block = frappe.get_cached_doc("YOB Storefront Block", block_name)
 
@@ -103,7 +124,8 @@ def project_block(block_name, customer_doc):
 
     machine_type = BLOCK_TYPES[block.block_type]
 
-    payload = {"type": machine_type, "block_name": block.block_name}
+    payload = {"type": machine_type, "block_name": block.block_name,
+               "section_style": normalise_style(section_style)}
     payload.update(PROJECTORS[machine_type](block, customer_doc))
 
     return payload
@@ -241,7 +263,7 @@ def route_content(route_key, customer_doc):
     placements = frappe.get_all(
         "YOB Storefront Content Placement",
         filters={"route_key": route_key, "enabled": 1},
-        fields=["name", "slot_key", "block", "sequence"],
+        fields=["name", "slot_key", "block", "sequence", "section_style"],
         # `name` breaks ties so two placements sharing a sequence still order
         # deterministically -- an arbitrary order would reshuffle between
         # requests and look like a rendering bug.
@@ -258,7 +280,7 @@ def route_content(route_key, customer_doc):
         blocks = []
 
         for row in by_slot.get(slot, []):
-            projected = project_block(row.block, customer_doc)
+            projected = project_block(row.block, customer_doc, row.section_style)
 
             # None means the Block is disabled or of a type this release cannot
             # draw. Skip it: never substitute another Block, and never fall back

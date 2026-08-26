@@ -1,6 +1,6 @@
 # CHG-002 — Storefront Navigation, Catalog Filters and Content Blocks
 
-Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model), Phase 25C (runtime APIs), Phase 25C-1 (contract precision) and Phase 25G (system route placements) implemented; Phase 25F signed off — see §21 for the as-built names, §22 for route placements, and the sign-off report for the chain verdict`
+Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model), Phase 25C (runtime APIs), Phase 25C-1 (contract precision), Phase 25G (system route placements) and Phase 25I (section styles) implemented; Phase 25F signed off — see §21 for the as-built names, §22 for route placements, §23 for section styles, and the sign-off report for the chain verdict`
 
 Owner: `Nilesh`
 
@@ -762,3 +762,80 @@ Both Desk structures gained `Content Placements` under `Content`: the Workspace
 page card **and** the v16 left `Workspace Sidebar`. Both source files had their
 `modified` bumped, without which `import_file_by_path` skips them on every
 existing site.
+
+
+---
+
+## 23. Phase 25I — Content Placement Section Styles
+
+### What a section style is, and what it is not
+
+One approved semantic word naming the **band** a block sits in:
+
+```html
+<section class="section section-muted">   <!-- full width; the style paints this -->
+  <div class="content-container">          <!-- Angular owns this width -->
+    …the existing block renderer, unchanged…
+  </div>
+</section>
+```
+
+`section_style` is **NOT** arbitrary CSS, a Tailwind class, a layout or width
+setting, a colour, a background image, or a merchant-defined class name. The
+backend stores one of five words and refuses everything else.
+
+**Angular owns** the exact colour, the CSS, padding, breakpoints, text colour,
+the fixed content width and the full-width behaviour. **The merchant owns** only
+which of the five approved styles applies. That division is what keeps this from
+becoming a page builder — the merchant is choosing from a controlled vocabulary,
+not authoring presentation.
+
+### The registry — `utils/section_styles.py`
+
+| Key | Label |
+|---|---|
+| `default` | Default — the ordinary page background |
+| `muted` | Muted |
+| `brand_soft` | Brand Soft |
+| `accent` | Accent |
+| `dark` | Dark |
+
+One authority, read by both DocTypes' validation, the field options, the runtime
+projection, the published enum and the tests.
+
+### It lives on the PLACEMENT, never on the Block
+
+A Block is authored once and placed many times. Storing the band on the Block
+would force every placement of it to agree, and the first merchant wanting a
+different background would duplicate the Block — destroying the single-source
+content the design exists to provide.
+
+So the field is on **`YOB Storefront Page Block`** and
+**`YOB Storefront Content Placement`**, and a test asserts it is *not* on
+`YOB Storefront Block`. Another proves one Rich Text projecting as `muted`
+through a page and `dark` through a route, with every other field in the two
+payloads identical.
+
+### Projection
+
+`project_block(block_name, customer_doc, section_style=None)` — the placement's
+key is passed **in**, applied once beside `type` and `block_name`, and no
+block-type projector ever sees it. A projector that read the style would be the
+first line of style-specific business logic (deciding `dark` means white text),
+which belongs to Angular; a test scans for exactly that.
+
+Page and route still share the one projector, unchanged.
+
+### Historical rows
+
+Blank normalises to `default` on the way **out**; nothing is rewritten. A row
+written before the field existed renders exactly as it did before, so migrate
+needs no data patch, no content disappears, no order changes and no Block is
+duplicated.
+
+### Not implemented, deliberately
+
+No section width, container width, padding, margin, text colour, background
+colour picker, background image, custom class or inline style. If the business
+later needs more controlled presentation, it gets added deliberately — one
+approved key at a time.

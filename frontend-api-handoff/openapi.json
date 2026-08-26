@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -1233,12 +1233,25 @@
      }
     }
    },
+   "SectionStyle": {
+    "type": "string",
+    "enum": [
+     "default",
+     "muted",
+     "brand_soft",
+     "accent",
+     "dark"
+    ],
+    "default": "default",
+    "description": "The semantic band a block sits in. Set per PLACEMENT, never on the reusable Block, so the same Block can be `muted` on a page and `dark` on a route.\n\n**Semantic only.** The backend does not define colour, padding, text colour, breakpoints, the fixed content width or the full-bleed behaviour -- the SPA maps each key to source-controlled styling. It is not a class name and never arbitrary CSS.\n\nThe intended shape is a full-width section wrapping a fixed-width container:\n`<section class=section-{style}><div class=content-container>...block...</div></section>`\n\n`default` means the ordinary page background. Rows written before this field existed project as `default`, so it is always present."
+   },
    "ContentBlock": {
     "type": "object",
-    "description": "Discriminated by `type`. Each block carries ONLY its own type's fields -- never infer the kind from which nullable fields are set. `type` and `block_name` are present on every block; every other property below names the block types that actually carry it, and a client must not read a property outside those types.\n\nPer type, the fields the runtime always emits:\n* `image_banner` -- desktop_image, mobile_image, alt_text, desktop_height_px, mobile_height_px, destination\n* `rich_text` -- title, html, text_alignment\n* `banner_carousel` -- auto_play, interval_ms, desktop_height_px, mobile_height_px, slides\n* `promo_grid` -- cards_per_row, desktop_height_px, mobile_height_px, cards\n* `product_grid` -- card_type, item_limit, category, items (NO height fields: a grid is sized by its cards, not by a merchant-set pixel height)",
+    "description": "Discriminated by `type`. Each block carries ONLY its own type's fields -- never infer the kind from which nullable fields are set. `type`, `block_name` and `section_style` are present on every block (`section_style` comes from the PLACEMENT -- the Page Block row or the Content Placement -- never from the reusable Block, so the same Block can be `muted` in one location and `dark` in another); every other property below names the block types that actually carry it, and a client must not read a property outside those types.\n\nPer type, the fields the runtime always emits:\n* `image_banner` -- desktop_image, mobile_image, alt_text, desktop_height_px, mobile_height_px, destination\n* `rich_text` -- title, html, text_alignment\n* `banner_carousel` -- auto_play, interval_ms, desktop_height_px, mobile_height_px, slides\n* `promo_grid` -- cards_per_row, desktop_height_px, mobile_height_px, cards\n* `product_grid` -- card_type, item_limit, category, items (NO height fields: a grid is sized by its cards, not by a merchant-set pixel height)",
     "x-block-always-present": [
      "type",
-     "block_name"
+     "block_name",
+     "section_style"
     ],
     "x-block-fields": {
      "image_banner": [
@@ -1276,7 +1289,8 @@
     },
     "required": [
      "type",
-     "block_name"
+     "block_name",
+     "section_style"
     ],
     "properties": {
      "type": {
@@ -1291,6 +1305,9 @@
      },
      "block_name": {
       "type": "string"
+     },
+     "section_style": {
+      "$ref": "#/components/schemas/SectionStyle"
      },
      "desktop_image": {
       "type": "string",
@@ -4923,7 +4940,8 @@
                "block_name": "Monsoon notice",
                "title": "Free delivery",
                "html": "<p>On orders over 5000.</p>",
-               "text_alignment": "center"
+               "text_alignment": "center",
+               "section_style": "muted"
               }
              ]
             },

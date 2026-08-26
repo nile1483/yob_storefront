@@ -150,6 +150,28 @@ changes** — a cursor replayed under a different selection answers
 Switch on `type` — never on which nullable fields happen to be set. Slides and
 cards arrive in the merchant's order; do not re-sort.
 
+**Every block carries `section_style`** — one of `default`, `muted`,
+`brand_soft`, `accent`, `dark`. It is the semantic band the block sits in, and it
+comes from the **placement**, not from the Block: the same Block can be `muted`
+on one page and `dark` on a route, so never cache a style against a block name.
+
+The intended shape is a full-width section wrapping the existing fixed-width
+container:
+
+```html
+<section class="section section-muted">
+  <div class="content-container">…the existing block renderer, unchanged…</div>
+</section>
+```
+
+**The SPA owns what each key looks like** — colour, padding, text colour,
+breakpoints, the content width and the full-bleed behaviour are all yours, in
+source-controlled CSS. The backend never sends a class name, a colour or any CSS;
+it sends one of five approved words. `default` means the ordinary page
+background, and it is always present (rows predating the field project as
+`default`), so you can switch on it without a null check.
+
+
 **Slides and cards are typed rows.** A carousel slide (`BannerCarouselSlide`) and
 a promo card (`PromoCard`) are the same shape — one media pair, a caption and a
 shared destination — and both are fully defined in `openapi.json`, so generate

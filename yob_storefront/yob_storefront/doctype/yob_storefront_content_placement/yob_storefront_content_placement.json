@@ -9,6 +9,7 @@
  "field_order": [
   "route_key",
   "slot_key",
+  "section_style",
   "column_break_where",
   "sequence",
   "enabled",
@@ -33,6 +34,15 @@
    "in_list_view": 1,
    "label": "Position",
    "reqd": 1
+  },
+  {
+   "default": "default",
+   "description": "The band this block sits in. A semantic choice only -- Angular owns the actual colour, padding and full-width behaviour. Set per PLACEMENT, so the same Block can be muted here and dark elsewhere.",
+   "fieldname": "section_style",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Section Style",
+   "options": "default\nmuted\nbrand_soft\naccent\ndark"
   },
   {
    "fieldname": "column_break_where",
@@ -70,7 +80,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-08-22 11:00:00.000000",
+ "modified": "2026-08-26 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "yob_storefront",
  "name": "YOB Storefront Content Placement",

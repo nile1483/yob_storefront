@@ -10,6 +10,34 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Every content block carries a `section_style` (OpenAPI 3.6.0)
+
+**Additive.** No block payload lost or changed a field; one common field was
+added.
+
+**OLD** — a block was rendered inside whatever container surrounded it, so a
+merchant could not give one block a distinct background band.
+
+**CURRENT** — every projected `ContentBlock`, from both `cms.get_page` and
+`cms.get_route_content`, carries:
+
+```jsonc
+{"type":"rich_text","block_name":"Welcome","section_style":"muted", …}
+```
+
+`section_style` is one of `default` · `muted` · `brand_soft` · `accent` · `dark`,
+published as the reusable `SectionStyle` schema.
+
+**FRONTEND ACTION** — wrap the existing block renderer in a full-width section
+that maps the key to source-controlled CSS, with the existing fixed-width
+container inside it. The block renderer itself needs no change.
+
+**It belongs to the PLACEMENT, not the Block.** The same Block may return
+`muted` on a page and `dark` on a route, so do not key styling off `block_name`
+or cache a style per block. The value is always present — rows predating the
+field project as `default` — so no null check is needed. The backend sends no
+class names, colours or CSS.
+
 ## 0. Content Blocks can now appear inside application pages (OpenAPI 3.5.0)
 
 **Additive.** `cms.get_page` and `/pages/:slug` are unchanged; no existing Page

@@ -32,6 +32,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
+from yob_storefront.utils.section_styles import SectionStyleError, validate_style
 from yob_storefront.utils.storefront_content import MAX_PRODUCT_GRIDS
 from yob_storefront.utils.system_slots import (
     SlotError,
@@ -46,6 +47,7 @@ DOCTYPE = "YOB Storefront Content Placement"
 class YOBStorefrontContentPlacement(Document):
     def validate(self):
         self.validate_slot()
+        self.validate_section_style()
         self.validate_block()
         self.validate_not_duplicated()
         self.validate_product_grid_budget()
@@ -64,6 +66,22 @@ class YOBStorefrontContentPlacement(Document):
         try:
             validate_placement(self.route_key, self.slot_key)
         except SlotError as exc:
+            frappe.throw(exc.message, frappe.ValidationError, exc.field)
+
+    # -------------------------------------------------------- presentation
+
+    def validate_section_style(self):
+        """One of five approved words, or nothing.
+
+        This is the only place a merchant can type presentation, so it is the
+        only place a Tailwind class or a CSS declaration could get in. Blank is
+        accepted rather than rewritten: rows written before this field existed
+        are normalised to `default` when projected, so nothing has to be migrated.
+        """
+
+        try:
+            validate_style(self.section_style)
+        except SectionStyleError as exc:
             frappe.throw(exc.message, frappe.ValidationError, exc.field)
 
     # ---------------------------------------------------------------- block
