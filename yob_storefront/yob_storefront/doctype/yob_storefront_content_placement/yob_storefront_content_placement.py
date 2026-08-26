@@ -32,6 +32,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
+from yob_storefront.utils.content_widths import ContentWidthError, validate_width
 from yob_storefront.utils.section_styles import SectionStyleError, validate_style
 from yob_storefront.utils.storefront_content import MAX_PRODUCT_GRIDS
 from yob_storefront.utils.system_slots import (
@@ -47,7 +48,7 @@ DOCTYPE = "YOB Storefront Content Placement"
 class YOBStorefrontContentPlacement(Document):
     def validate(self):
         self.validate_slot()
-        self.validate_section_style()
+        self.validate_presentation()
         self.validate_block()
         self.validate_not_duplicated()
         self.validate_product_grid_budget()
@@ -70,18 +71,26 @@ class YOBStorefrontContentPlacement(Document):
 
     # -------------------------------------------------------- presentation
 
-    def validate_section_style(self):
-        """One of five approved words, or nothing.
+    def validate_presentation(self):
+        """The two placement presentation keys, each against its own registry.
 
         This is the only place a merchant can type presentation, so it is the
-        only place a Tailwind class or a CSS declaration could get in. Blank is
-        accepted rather than rewritten: rows written before this field existed
-        are normalised to `default` when projected, so nothing has to be migrated.
+        only place a Tailwind class, a CSS declaration or `100vw` could get in.
+        Blank is accepted rather than rewritten: rows written before either field
+        existed normalise on projection, so nothing has to be migrated.
+
+        The two are validated independently and never derived from one another --
+        a dark band with a full-width block is as legitimate as any other pair.
         """
 
         try:
             validate_style(self.section_style)
         except SectionStyleError as exc:
+            frappe.throw(exc.message, frappe.ValidationError, exc.field)
+
+        try:
+            validate_width(self.content_width)
+        except ContentWidthError as exc:
             frappe.throw(exc.message, frappe.ValidationError, exc.field)
 
     # ---------------------------------------------------------------- block

@@ -19,11 +19,13 @@ is the ONE function both go through, so the wire payload cannot depend on which
 mechanism placed the Block. A second projector would be a second contract, and
 the client union would quietly grow a dialect.
 
-The one thing a placement DOES contribute is `section_style` -- the semantic band
-the block sits in (Phase 25I). It is passed IN rather than read from the Block,
-because the same Block may be muted on a page and dark on a route. No block-type
-projector sees it: presentation is common metadata wrapped around the payload,
-never a branch inside one.
+What a placement DOES contribute is presentation: `section_style` -- the semantic
+band the block sits in (Phase 25I) -- and `content_width` -- whether the block
+spans that band or stays inside the fixed container (Phase 25K). Both are passed
+IN rather than read from the Block, because the same Block may be muted and
+contained on a page while running dark and full width on a route. The two are
+independent, and no block-type projector sees either: presentation is common
+metadata wrapped around the payload, never a branch inside one.
 
 PRODUCT GRID IS NOT A QUERY ENGINE
 ----------------------------------
@@ -43,6 +45,7 @@ import frappe
 from frappe.utils import cint
 
 from yob_storefront.services.storefront_destination import project_destination
+from yob_storefront.utils.content_widths import normalise as normalise_width
 from yob_storefront.utils.section_styles import normalise as normalise_style
 
 BLOCK_TYPES = {
@@ -81,13 +84,14 @@ def get_page(slug, customer_doc):
     rows = frappe.get_all(
         "YOB Storefront Page Block",
         filters={"parent": page.name, "parenttype": "YOB Storefront Page", "enabled": 1},
-        fields=["block", "sequence", "idx", "section_style"],
+        fields=["block", "sequence", "idx", "section_style", "content_width"],
         order_by="sequence asc, idx asc", limit_page_length=0)
 
     blocks = []
 
     for row in rows:
-        projected = project_block(row.block, customer_doc, row.section_style)
+        projected = project_block(row.block, customer_doc, row.section_style,
+                                  row.content_width)
         if projected:
             blocks.append(projected)
 
@@ -100,21 +104,23 @@ def get_page(slug, customer_doc):
     }
 
 
-def project_block(block_name, customer_doc, section_style=None):
+def project_block(block_name, customer_doc, section_style=None, content_width=None):
     """One block as its discriminated payload, or None when unusable.
 
-    `section_style` is the PLACEMENT's presentation key -- the band this block
-    sits in -- and is the only thing a placement contributes to the payload. It
-    is applied here, once, so that:
+    `section_style` and `content_width` are the PLACEMENT's presentation keys --
+    the band this block sits in, and whether the block spans that band or stays
+    inside the fixed container. They are the only things a placement contributes
+    to the payload, they are independent of each other, and they are applied
+    here, once, so that:
 
-    * every block type carries it without any type learning about it (a
-      `product_grid` projector that knew about `dark` would be the start of
-      style-specific business logic, which is Angular's job, not ours);
-    * a Page and a system route project the SAME block differently by passing a
-      different key, rather than by having different projectors.
+    * every block type carries both without any type learning about them (a
+      `product_grid` projector that knew what `dark` or `full_width` meant would
+      be the start of presentation logic, which is Angular's job, not ours);
+    * a Page and a system route project the SAME block differently by passing
+      different keys, rather than by having different projectors.
 
-    A blank or unrecognised value normalises to `default`, so rows written before
-    the field existed render exactly as they always did.
+    Blank or unrecognised values normalise to `default` and `contained`, so rows
+    written before either field existed render exactly as they always did.
     """
 
     block = frappe.get_cached_doc("YOB Storefront Block", block_name)
@@ -125,7 +131,8 @@ def project_block(block_name, customer_doc, section_style=None):
     machine_type = BLOCK_TYPES[block.block_type]
 
     payload = {"type": machine_type, "block_name": block.block_name,
-               "section_style": normalise_style(section_style)}
+               "section_style": normalise_style(section_style),
+               "content_width": normalise_width(content_width)}
     payload.update(PROJECTORS[machine_type](block, customer_doc))
 
     return payload
@@ -263,7 +270,8 @@ def route_content(route_key, customer_doc):
     placements = frappe.get_all(
         "YOB Storefront Content Placement",
         filters={"route_key": route_key, "enabled": 1},
-        fields=["name", "slot_key", "block", "sequence", "section_style"],
+        fields=["name", "slot_key", "block", "sequence", "section_style",
+                "content_width"],
         # `name` breaks ties so two placements sharing a sequence still order
         # deterministically -- an arbitrary order would reshuffle between
         # requests and look like a rendering bug.
@@ -280,7 +288,8 @@ def route_content(route_key, customer_doc):
         blocks = []
 
         for row in by_slot.get(slot, []):
-            projected = project_block(row.block, customer_doc, row.section_style)
+            projected = project_block(row.block, customer_doc, row.section_style,
+                                      row.content_width)
 
             # None means the Block is disabled or of a type this release cannot
             # draw. Skip it: never substitute another Block, and never fall back

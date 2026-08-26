@@ -171,6 +171,34 @@ it sends one of five approved words. `default` means the ordinary page
 background, and it is always present (rows predating the field project as
 `default`), so you can switch on it without a null check.
 
+**Every block also carries `content_width`** — `contained` or `full_width`. This
+is a second, INDEPENDENT axis: `section_style` paints the full-width band,
+`content_width` says whether the block spans that band or stays inside the fixed
+container.
+
+```html
+<!-- contained -->                    <!-- full_width -->
+<section class="section-muted">       <section class="section-default">
+  <div class="yob-content-container">   …block renderer…
+    …block renderer…                  </section>
+  </div>
+</section>
+```
+
+A hero carousel is typically `default` + `full_width`; a product grid
+`brand_soft` + `contained`. **All ten combinations are valid** — do not derive
+one key from the other, and do not restrict `full_width` to banners: any block
+type may use it, and the merchant may legitimately want a full-width promo or
+product grid.
+
+**Horizontal containment only.** It does not control the section background,
+vertical spacing, block or image height, which responsive image is chosen, or any
+margin/padding — those stay in your CSS. As with `section_style`, it comes from
+the **placement**, so the same Block may be `full_width` on the home route and
+`contained` on a page; never cache a width against a block name. It is always
+present (rows predating the field project as `contained`).
+
+
 
 **Slides and cards are typed rows.** A carousel slide (`BannerCarouselSlide`) and
 a promo card (`PromoCard`) are the same shape — one media pair, a caption and a

@@ -1,6 +1,6 @@
 # CHG-002 — Storefront Navigation, Catalog Filters and Content Blocks
 
-Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model), Phase 25C (runtime APIs), Phase 25C-1 (contract precision), Phase 25G (system route placements) and Phase 25I (section styles) implemented; Phase 25F signed off — see §21 for the as-built names, §22 for route placements, §23 for section styles, and the sign-off report for the chain verdict`
+Status: `Phase 25A design approved with corrections; Phase 25B (admin + data model), Phase 25C (runtime APIs), Phase 25C-1 (contract precision), Phase 25G (system route placements) and Phase 25I (section styles) and Phase 25K (content width) implemented; Phase 25F signed off — see §21 for the as-built names, §22 for route placements, §23 for section styles, §24 for content width, and the sign-off report for the chain verdict`
 
 Owner: `Nilesh`
 
@@ -839,3 +839,86 @@ No section width, container width, padding, margin, text colour, background
 colour picker, background image, custom class or inline style. If the business
 later needs more controlled presentation, it gets added deliberately — one
 approved key at a time.
+
+
+---
+
+## 24. Phase 25K — Content Width Placement Control
+
+### The second, independent axis
+
+Phase 25I gave a placement a **band**. Some content -- a hero Image Banner, a
+hero Banner Carousel -- also needs the block ITSELF to span that band rather than
+sit inside the fixed container. That is a different question about a different
+element, so it is a different key:
+
+| Key | Answers | About |
+|---|---|---|
+| `section_style` | what does the band look like? | the full-width `<section>` |
+| `content_width` | does the block span it? | the block inside |
+
+```text
+contained                          full_width
+  <section>                          <section>
+    <div class=yob-content-container>  …block…
+      …block…                        </section>
+    </div>
+  </section>
+```
+
+**Neither is derived from the other**, and all ten combinations are legitimate --
+a hero carousel is usually `default` + `full_width`, a product grid `brand_soft`
++ `contained`, and `dark` + `full_width` is as valid as any. A test stores and
+projects every pair.
+
+### The registry — `utils/content_widths.py`
+
+| Key | Label |
+|---|---|
+| `contained` | Contained — the pre-25K behaviour, unchanged |
+| `full_width` | Full Width |
+
+**Exactly two.** No narrow, wide, boxed, fluid, percentage, viewport or custom
+width. A third gets added deliberately when a business case arrives, rather than
+pre-emptively turning this into a width system.
+
+### Horizontal containment only
+
+`content_width` controls nothing else. Not the section background or style, not
+vertical spacing, not block or image height, not which responsive image is
+chosen, and no margin or padding value. The backend implements no CSS meaning at
+all; Angular decides what containment means at every breakpoint.
+
+### Placement-owned, like the band
+
+On `YOB Storefront Page Block` and `YOB Storefront Content Placement`, and
+asserted *absent* from `YOB Storefront Block`. The identical hero Banner can run
+full width on the home route and contained inside a dynamic page -- proved by a
+test that also checks every other field of the two payloads is identical, and
+that placing a block full width leaves the Block's `modified` untouched.
+
+### Valid for every block type
+
+`full_width` is deliberately **not** restricted to banners. It is a generic
+placement primitive, and a merchant may legitimately want a full-width Promo Grid
+or Product Grid; Angular still controls each component's internal layout.
+
+### Projection
+
+`project_block(block_name, customer_doc, section_style=None, content_width=None)`
+-- both keys passed in, applied once beside `type` and `block_name`, and no
+block-type projector sees either. A source guard scans for a projector mentioning
+a width value, because a projector that interpreted `full_width` would be layout
+logic migrating out of Angular.
+
+### Historical rows
+
+Blank normalises to `contained` on the way **out**; nothing is rewritten. Every
+existing placement therefore looks exactly as it does today after migrate -- no
+data patch, no content lost, no order change, no Block duplicated.
+
+### Product Grid
+
+Untouched. The same grid projected `contained` and `full_width` returns payloads
+identical apart from that one field, and the `price_candidate` call count is the
+same in both -- a width costs zero pricing work.

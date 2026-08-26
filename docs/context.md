@@ -1040,6 +1040,35 @@ scans for that. Page and route still share the one projector.
 A blank value normalises to `default` on the way out; nothing is rewritten, so
 rows predating the field render exactly as before with no data patch.
 
+## Content width on a placement (Phase 25K)
+
+A second, independent placement key: `content_width`, either `contained` or
+`full_width`. `section_style` paints the full-width band; `content_width` says
+whether the block spans that band or stays inside the fixed
+`yob-content-container`. Hero banners and carousels need the latter; most content
+does not.
+
+Neither key is derived from the other and every combination is valid — a test
+stores and projects all ten. `full_width` is deliberately available to **all
+five** block types, not just banners: it is a generic placement primitive, and
+Angular still owns each component's internal layout.
+
+**Horizontal containment only.** Not the background, not vertical spacing, not
+block or image height, not responsive image choice, no margin or padding. The
+backend implements no CSS meaning; it stores one of exactly two words and refuses
+`100%`, `100vw`, `max-w-none` and arbitrary text at save. There is no narrow,
+wide, boxed or fluid variant — a third width gets added deliberately if a real
+case arrives.
+
+Like `section_style` it lives on `YOB Storefront Page Block` and
+`YOB Storefront Content Placement`, never on `YOB Storefront Block`, so the same
+hero Banner runs full width on the home route and contained on a page without
+being duplicated. `project_block(block, customer_doc, section_style, content_width)`
+applies both once; no block-type projector sees either, guarded by a source scan.
+
+Blank normalises to `contained` on the way out, so every pre-25K placement looks
+exactly as it did with no data patch.
+
 ## Chain verification (Phase 25F)
 
 Not a feature. `tests/test_storefront_chain.py` walks the whole storefront in one

@@ -10,6 +10,7 @@
   "route_key",
   "slot_key",
   "section_style",
+  "content_width",
   "column_break_where",
   "sequence",
   "enabled",
@@ -43,6 +44,15 @@
    "in_list_view": 1,
    "label": "Section Style",
    "options": "default\nmuted\nbrand_soft\naccent\ndark"
+  },
+  {
+   "default": "contained",
+   "description": "Whether the block itself is held inside the fixed content container or spans the full section width. Horizontal containment ONLY -- background, spacing and heights are separate. Set per PLACEMENT, so the same Block can run full width here and contained elsewhere.",
+   "fieldname": "content_width",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Content Width",
+   "options": "contained\nfull_width"
   },
   {
    "fieldname": "column_break_where",
@@ -80,7 +90,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-08-26 10:00:00.000000",
+ "modified": "2026-08-26 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "yob_storefront",
  "name": "YOB Storefront Content Placement",

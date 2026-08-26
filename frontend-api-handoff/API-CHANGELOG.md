@@ -10,6 +10,45 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Every content block carries a `content_width` (OpenAPI 3.7.0)
+
+**Additive.** One more common field; no block payload lost or changed anything.
+
+**OLD** — a block was always rendered inside the fixed content container, so a
+hero banner or carousel could not span the full main width.
+
+**CURRENT** — every projected `ContentBlock`, from both `cms.get_page` and
+`cms.get_route_content`, carries:
+
+```jsonc
+{"type":"banner_carousel","block_name":"Homepage Hero",
+ "section_style":"default","content_width":"full_width", …}
+```
+
+`content_width` is `contained` or `full_width`, published as the reusable
+`ContentWidth` schema.
+
+**FRONTEND ACTION** — inside the section you already render for `section_style`,
+use `content_width` to decide whether to wrap the block in the fixed container or
+render it directly:
+
+```html
+<section class="section-{{section_style}}">
+  <div class="yob-content-container" *ngIf="contained">…block…</div>
+  <ng-container *ngIf="!contained">…block…</ng-container>
+</section>
+```
+
+**The two keys are INDEPENDENT** — all ten combinations are valid, and neither is
+derived from the other. `full_width` is valid for **all five block types**, not
+just banners. It controls horizontal containment only: background, spacing and
+heights remain yours.
+
+Like `section_style` it belongs to the **placement**, so the same Block may be
+`full_width` in one location and `contained` in another — don't key layout off
+`block_name`. Always present; rows predating the field project as `contained`, so
+existing content renders exactly as it does today.
+
 ## 0. Every content block carries a `section_style` (OpenAPI 3.6.0)
 
 **Additive.** No block payload lost or changed a field; one common field was

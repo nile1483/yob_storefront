@@ -16,6 +16,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
+from yob_storefront.utils.content_widths import ContentWidthError, validate_width
 from yob_storefront.utils.section_styles import SectionStyleError, validate_style
 from yob_storefront.utils.storefront_content import MAX_PRODUCT_GRIDS, validate_key
 
@@ -41,12 +42,20 @@ class YOBStorefrontPage(Document):
 
             seen.add(row.block)
 
-            # Presentation is per PLACEMENT: this row's band, not the Block's.
-            # The same Block may be muted here and dark on a system route, which
-            # is exactly why the key is stored on the row rather than the master.
+            # Presentation is per PLACEMENT: this row's band and containment,
+            # not the Block's. The same Block may be muted and contained here
+            # while running dark and full width on a system route -- which is
+            # exactly why both keys live on the row rather than the master.
             try:
                 validate_style(row.section_style)
             except SectionStyleError as exc:
+                frappe.throw(
+                    _("Row {0}: {1}").format(row.idx, exc.message),
+                    frappe.ValidationError)
+
+            try:
+                validate_width(row.content_width)
+            except ContentWidthError as exc:
                 frappe.throw(
                     _("Row {0}: {1}").format(row.idx, exc.message),
                     frappe.ValidationError)
