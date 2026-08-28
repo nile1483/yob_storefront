@@ -58,6 +58,7 @@ No body. Requires CSRF.
 | `catalog.get_item` | GET | `slug`, `qty` (default 1) |
 | `catalog.resolve_variant` | GET | `template`, `attributes` (JSON object), `qty` (default 1) |
 | `catalog.get_category_filters` | GET | `scope_value` (category slug) |
+| `catalog.get_product_suggestions` | GET | `search` |
 | `cms.get_menu` | GET | `menu_key` |
 | `cms.get_page` | GET | `slug` |
 | `cms.get_route_content` | GET | `route_key` |
@@ -229,6 +230,49 @@ answers `category: null` and `items: []`; it never falls back to other products.
 
 **Caching.** Menus are customer-independent. A page containing a Product Grid is
 **customer-priced** — never cache or share that response across users.
+
+### Header product suggestions (Phase 26A)
+
+**`catalog.get_product_suggestions(search)`** — a few public products for the
+header typeahead. **Navigation only.**
+
+```jsonc
+{"items":[
+  {"item_code":"DRILL-001","item_name":"Cordless Drill",
+   "slug":"cordless-drill","image":"/files/drill.jpg","is_template":false}]}
+```
+
+**Ask only from 3 characters.** Below that the server answers `{"items": []}`
+without querying anything — the same floor you apply, enforced rather than
+trusted. A short search is **not an error**, so do not render one.
+
+**At most 8 results**, ordered by product name, deterministic for the same query.
+There is no pagination, no cursor, no facets and no `limit` parameter — the cap
+is server-owned.
+
+**No money, by design.** No rate, discount, tax, UOM, conversion factor, stock,
+warehouse or pricing rule, and none will be added. Do not render a price in the
+dropdown; the product page is authoritative once clicked. This is not a small
+`ListingCard` — it is a separate, deliberately lighter contract.
+
+**Same products as the catalogue.** Eligibility is the listing's own, so anything
+suggested is something `get_items` would list: public slug required, disabled and
+unpriced products excluded, and a **variant family appears once as the family**
+(`is_template: true`) while generated variants never appear on their own. Open a
+family with the normal family route — it resolves options, it is not directly
+buyable.
+
+**Matching** is the catalogue's: whole words against the product name, AND across
+words, with `%` and `_` treated as literal characters.
+
+**Global scope.** Not filtered by the category being browsed — the same products
+answer from the cart, account, orders or a product page. Authenticated like every
+other catalogue call; the customer comes from the session, so a buyer is never
+shown a product their own catalogue would not list.
+
+`image` is the stored relative path or `null`, the same convention `ListingCard`
+uses — your existing media helper works unchanged. Over 100 characters or more
+than 6 words answers `search_too_long`, exactly as `get_items` does.
 
 ### System route content (Phase 25G)
 

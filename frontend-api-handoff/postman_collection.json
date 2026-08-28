@@ -497,6 +497,37 @@
       },
       "description": "AUTH\n\nOR within a filter, AND across filters. The selection is part of the cursor binding: reusing a cursor under a different selection answers cursor_invalid."
      }
+    },
+    {
+     "name": "[AUTH] get_product_suggestions",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_product_suggestions?search=dri",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.catalog.get_product_suggestions"
+       ],
+       "query": [
+        {
+         "key": "search",
+         "value": "dri",
+         "description": "Under 3 characters answers an empty list and queries nothing -- not an error."
+        }
+       ]
+      },
+      "description": "AUTH\n\nHeader typeahead. Up to 8 public products, navigation only.\n\nNo money at all: no rate, discount, tax, UOM, stock or warehouse. Not a ListingCard and not a listing -- no pagination, no cursor, no facets, no limit parameter.\n\nSame eligibility as get_items, so a family appears ONCE as the family (is_template true) and generated variants never appear alone. Global scope: not filtered by the category being browsed."
+     }
     }
    ]
   },

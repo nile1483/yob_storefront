@@ -1069,6 +1069,51 @@ applies both once; no block-type projector sees either, guarded by a source scan
 Blank normalises to `contained` on the way out, so every pre-25K placement looks
 exactly as it did with no data patch.
 
+## Header product suggestions (Phase 26A)
+
+`catalog.get_product_suggestions(search)` — at most **8** public products for the
+header typeahead. Navigation only: no pagination, no cursor, no facets, no
+category scope, no results page, and **no money at all**.
+
+**Under 3 characters it answers `{"items": []}` and does nothing** — no candidate
+query, no customer resolution. The SPA applies the same floor; the server
+enforces rather than trusts it. A short search is not an error.
+
+### One product universe, not a cheaper lookalike
+
+The endpoint owns no eligibility rules. It reuses the listing's own:
+
+| Stage | Reused | Cost |
+| --- | --- | --- |
+| 1 | `fetch_candidates(category=None, ...)` — the identical SQL: disabled, `is_sales_item`, public slug, family collapse, manufacturer fail-closed, end-of-life, same AND-across-words `item_name` match, same broad Item Price `EXISTS` | one query |
+| 2 | `is_catalog_eligible()` / `family_has_sellable_variant()` — the authoritative base-price rule | one `get_price_list_rate_for` per candidate |
+| 3 | **skipped** | zero Sales Orders |
+
+Stage 3 exists only to produce rates, taxes and UOM, and a dropdown shows none of
+them — so skipping it saves WORK without weakening the RULE: eligibility is a
+statement about the base price, and Stage 3 can neither add nor remove a product.
+A parity test asserts the suggestion set equals the listing set for the same
+search, which is what stops a second "searchable" universe forming.
+
+`fetch_candidates` gained an optional `category=None` for this (global search).
+Absent means the predicate is simply not applied — not a wildcard — and every
+other rule is unchanged, so `get_items` behaves exactly as before.
+
+### Contract
+
+`{item_code, item_name, slug, image, is_template}` and nothing else — asserted by
+a test listing every forbidden monetary and transaction-context key. `image` is
+the stored relative path or null, the catalogue's own convention. A family
+appears once with `is_template: true`; generated variants never appear alone.
+
+Ordering is the catalogue's `name_asc`, deterministic — there is no relevance
+ranking in the catalogue and none was invented, because suggestion order must not
+disagree with the listing one click away.
+
+Authenticated like every catalogue endpoint; the Customer comes from
+`auth_context` only, and a test proves a product priced solely for another
+customer is never suggested.
+
 ## Chain verification (Phase 25F)
 
 Not a feature. `tests/test_storefront_chain.py` walks the whole storefront in one

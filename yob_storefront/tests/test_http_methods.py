@@ -32,6 +32,9 @@ READ_ONLY = {
     # through the existing catalogue service into throwaway in-memory Sales
     # Orders, exactly as `get_items` does; nothing is stored.
     "catalog.get_category_filters", "cms.get_menu", "cms.get_page",
+    # Phase 26A: header typeahead. Reads the catalogue and stores nothing; it
+    # builds no Sales Order at all, not even a throwaway one.
+    "catalog.get_product_suggestions",
     # Phase 25G: the same read, addressed by application route instead of slug.
     "cms.get_route_content",
     "payment.get_checkout_data", "payment_method.get_payment_methods",

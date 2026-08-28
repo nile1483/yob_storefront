@@ -335,6 +335,12 @@ def decode_cursor(cursor, ctx, scope_type, scope_value, terms, sort, selection=N
 def fetch_candidates(ctx, category, terms, sort, after_keys, limit, selection=None):
     """One bounded page of plausible Items, in the requested deterministic order.
 
+    `category` may be **None**, which searches the whole catalogue instead of one
+    category (Phase 26A header suggestions). Every other rule below is unchanged
+    and applies identically, which is the point: a globally-searched product and
+    a category-listed one must be the same public entity, decided by one query
+    rather than two that could drift.
+
     Every predicate is either a constant, a validated enum, or a bound parameter.
     The only interpolation is `sort_sql`, taken from the SORT_MODES allow-list.
 
@@ -351,14 +357,12 @@ def fetch_candidates(ctx, category, terms, sort, after_keys, limit, selection=No
 
     mode = SORT_MODES[sort]
     params = {
-        "category": category,
         "today": ctx.transaction_date,
         "customer": ctx.customer,
         "limit": int(limit),
     }
 
     where = [
-        "i.custom_category = %(category)s",
         "i.disabled = 0",
         "i.is_sales_item = 1",
         # A public card needs a public URL. A variant has no slug of its own by
@@ -372,6 +376,13 @@ def fetch_candidates(ctx, category, terms, sort, after_keys, limit, selection=No
         "(IFNULL(i.has_variants, 0) = 0 OR i.variant_based_on = 'Item Attribute')",
         "(i.end_of_life IS NULL OR i.end_of_life = '0000-00-00' OR i.end_of_life >= %(today)s)",
     ]
+
+    # Scoped to one category for a listing page; omitted entirely for a global
+    # search. Absent is NOT "all categories via a wildcard" -- the predicate is
+    # simply not applied, so no pattern reaches SQL.
+    if category:
+        params["category"] = category
+        where.append("i.custom_category = %(category)s")
 
     for idx, term in enumerate(terms):
         params[f"term{idx}"] = _like_pattern(term)

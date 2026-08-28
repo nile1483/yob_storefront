@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -852,6 +852,75 @@
      "pricing_rule_label": {
       "type": "string",
       "nullable": true
+     }
+    }
+   },
+   "ProductSuggestion": {
+    "type": "object",
+    "description": "One public product in the header typeahead. Deliberately minimal: enough to draw a dropdown row and open the product page, and **nothing monetary**.\n\nThere is no rate, discount, tax, UOM, conversion factor, stock, warehouse or pricing rule here, and there will not be -- the product page is authoritative once the buyer clicks, and a price in a dropdown is a second place for money to be wrong. Do not treat this as a small `ListingCard`; it is a different contract for a different job.",
+    "required": [
+     "item_code",
+     "item_name",
+     "slug",
+     "image",
+     "is_template"
+    ],
+    "properties": {
+     "item_code": {
+      "type": "string",
+      "description": "Stable product identity."
+     },
+     "item_name": {
+      "type": "string",
+      "description": "What to show in the dropdown row."
+     },
+     "slug": {
+      "type": "string",
+      "description": "The public slug. Navigate to the product page with it; every suggestion has one, because a product without a public URL is never suggested."
+     },
+     "image": {
+      "type": "string",
+      "nullable": true,
+      "description": "Relative path as stored (`/files/...`), the same convention `ListingCard` uses, or null. Use your existing media helper unchanged."
+     },
+     "is_template": {
+      "type": "boolean",
+      "description": "True for a variant FAMILY, which opens an options page rather than a directly buyable product. Generated variants are never suggested on their own."
+     }
+    }
+   },
+   "ProductSuggestionsResponse": {
+    "type": "object",
+    "required": [
+     "message"
+    ],
+    "properties": {
+     "message": {
+      "type": "object",
+      "required": [
+       "data"
+      ],
+      "properties": {
+       "data": {
+        "type": "object",
+        "required": [
+         "items"
+        ],
+        "properties": {
+         "items": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+           "$ref": "#/components/schemas/ProductSuggestion"
+          },
+          "description": "At most 8, ordered by product name. Empty when the search is shorter than 3 characters, which is not an error."
+         }
+        }
+       },
+       "notice": {
+        "type": "string"
+       }
+      }
      }
     }
    },
@@ -4802,6 +4871,77 @@
      }
     },
     "description": "**AUTHENTICATED STOREFRONT**\n\nONE card per simple Item and ONE per variant FAMILY -- never one per variant. Every card carries `has_variants` and `price_state`:\n\n* `price_state = \"priced\"` -- a simple Item; monetary fields populated.\n* `price_state = \"select_options\"` -- a family; **every monetary field is null**. Render 'Select options'. No representative price is invented: ERPNext cannot price a template, and pricing every variant would make the page unbounded.\n\n**Merchandising filters (Phase 25C).** `storefront_filters` narrows the listing before any pricing happens, so a narrower selection costs FEWER pricing calls. The normalised selection is part of the cursor binding: a cursor issued for one selection answers `cursor_invalid` if replayed against another. Value order and duplicates do not change the query. `filters` remains reserved and still answers `unsupported_filters`."
+   }
+  },
+  "/api/method/yob_storefront.api.catalog.get_product_suggestions": {
+   "get": {
+    "tags": [
+     "catalog"
+    ],
+    "summary": "Header product-search suggestions",
+    "description": "A few public products for the header typeahead. **Navigation only.**\n\nAt most **8** results, no pagination, no cursor, no facets, no category scope and no money. It is not a listing and not a search-results page: there is no results page for this feature, and Enter does nothing.\n\n**Fewer than 3 characters answers `{\"items\": []}` and queries nothing.** That is not an error -- a buyer mid-word has done nothing wrong. The SPA applies the same floor; the server enforces it rather than trusting it.\n\n**Same products as the catalogue.** Eligibility is the listing's own -- the same candidate rules (public slug, family collapse, manufacturer fail-closed, end-of-life) and the same base-price visibility rule -- so a suggestion is always something `get_items` would list. A generated variant never appears on its own; a family appears once, as the family, with `is_template: true`.\n\n**Search matching** is the catalogue's: whole words against `item_name`, AND across words, `%` and `_` treated as literal characters.\n\nScope is **global** -- the same products answer from the cart, the account page or a product page. Authenticated like every other catalogue endpoint; the Customer comes from the session only, so a buyer is never suggested a product their own catalogue would not list.",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "search",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "maxLength": 100
+      },
+      "description": "What the buyer typed. Trimmed; under 3 characters answers an empty list. Over 100 characters or more than 6 words answers `search_too_long`, exactly as `get_items` does."
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Up to 8 suggestions, or an empty list.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProductSuggestionsResponse"
+        },
+        "example": {
+         "message": {
+          "data": {
+           "items": [
+            {
+             "item_code": "DRILL-001",
+             "item_name": "Cordless Drill",
+             "slug": "cordless-drill",
+             "image": "/files/drill.jpg",
+             "is_template": false
+            },
+            {
+             "item_code": "TEE-RED",
+             "item_name": "Red Tee",
+             "slug": "red-tee",
+             "image": null,
+             "is_template": true
+            }
+           ]
+          },
+          "notice": "Suggestions loaded"
+         }
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "`search_too_long` -- over 100 characters or more than 6 words.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
    }
   },
   "/api/method/yob_storefront.api.cms.get_menu": {

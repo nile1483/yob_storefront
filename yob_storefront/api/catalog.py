@@ -508,6 +508,76 @@ def resolve_variant(template=None, attributes=None, qty=1, auth_context=None):
 
 
 # =========================================================
+# HEADER PRODUCT SUGGESTIONS  (Phase 26A)
+# =========================================================
+
+@frappe.whitelist(methods=["GET"])
+@yob_api
+@require_application(STOREFRONT_APP, profile_doctype="Customer")
+def get_product_suggestions(search=None, auth_context=None):
+    """A few public products for the header typeahead. Navigation only.
+
+    Answers at most eight products matching every word typed, for a dropdown that
+    opens a product page. It is NOT a listing: no pagination, no cursor, no
+    facets, no category scope, and **no money** -- no rate, discount, tax, UOM,
+    stock or warehouse. The product page stays authoritative once clicked.
+
+    * `search` -- trimmed; **fewer than 3 characters answers an empty list and
+      queries nothing at all**, which is the same floor the SPA applies. A short
+      string is not an error: a buyer mid-word has done nothing wrong.
+
+    Eligibility is the catalogue's own, not a cheaper lookalike: the same Stage-1
+    candidate SQL (public slug, family collapse, manufacturer fail-closed,
+    end-of-life, the same AND-across-words `item_name` match) and the same Stage-2
+    base-price rule. What it skips is Stage 3, the throwaway Sales Order, because
+    nothing monetary is returned -- a saving in work, never a weakening of the
+    rule.
+
+    A generated variant never appears on its own; a family appears once, as the
+    family. Scope is global by design: the same products answer from the cart,
+    the account page or anywhere else.
+
+    The Customer comes from `auth_context` only, so a buyer can never see a
+    product their own catalogue would not list.
+    """
+
+    from yob_storefront.services.catalog_listing_service import (
+        ListingError,
+        PricingContext,
+        normalize_search,
+    )
+
+    try:
+        from yob_storefront.services.product_suggestion_service import (
+            MIN_SEARCH_LENGTH,
+            suggest_products,
+        )
+
+        # Normalised BEFORE the length test so "  ab  " is two characters, not
+        # six, and before any customer or catalogue work is done at all.
+        text = " ".join(str(search or "").split())
+
+        if len(text) < MIN_SEARCH_LENGTH:
+            return success_response({"items": []}, notice="Suggestions loaded")
+
+        try:
+            terms = normalize_search(text)
+        except ListingError as exc:
+            return error_response(exc.code, exc.message, field=exc.field,
+                                  status_code=HTTP_UNPROCESSABLE)
+
+        customer = get_storefront_customer(auth_context)
+        ctx = PricingContext(customer)
+
+        return success_response({"items": suggest_products(ctx, terms)},
+                                notice="Suggestions loaded")
+
+    except Exception:
+        return server_error("Get Product Suggestions Error",
+                            "Failed to load suggestions")
+
+
+# =========================================================
 # CATEGORY FILTER DEFINITIONS  (Phase 25C)
 # =========================================================
 

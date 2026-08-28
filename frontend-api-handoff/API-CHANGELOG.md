@@ -10,6 +10,39 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Header product suggestions (OpenAPI 3.8.0)
+
+**New endpoint. Nothing existing changed.**
+
+**OLD** — there was no typeahead; the only product query was the bounded
+category listing.
+
+**CURRENT**
+
+```
+catalog.get_product_suggestions(search)   up to 8 public products, no money
+```
+
+```jsonc
+{"items":[{"item_code":"DRILL-001","item_name":"Cordless Drill",
+           "slug":"cordless-drill","image":"/files/drill.jpg",
+           "is_template":false}]}
+```
+
+**FRONTEND ACTION** — call it from the header only after **3 typed characters**;
+below that it answers an empty list and does no work, and that is not an error.
+Render `item_name` with `image`, and navigate by `slug`. Treat `is_template:
+true` as a variant family — open the family page, do not offer add-to-cart.
+
+**Do not show a price.** The payload deliberately carries no rate, discount, tax,
+UOM, stock or warehouse, and it is not a `ListingCard` — do not type it as one.
+There is no results page, no pagination and no `limit`; the 8-result cap is
+server-owned. Enter is a no-op for this feature.
+
+Suggestions are the same public products `get_items` would list — families
+collapse to one row, generated variants never appear alone, and unpriced or
+unrouted products are excluded — so a click always lands on a real product page.
+
 ## 0. Every content block carries a `content_width` (OpenAPI 3.7.0)
 
 **Additive.** One more common field; no block payload lost or changed anything.
