@@ -10,6 +10,33 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Product search now matches the item code too (no version change)
+
+**Behaviour change to an existing endpoint. No request or response field
+changed, so the contract version stays 3.8.0.**
+
+**OLD** — `search` matched the product **name** only, on both
+`catalog.get_items` and `catalog.get_product_suggestions`. A buyer typing a code
+fragment from a quote or a past order found nothing.
+
+**CURRENT** — each search word matches the product **name OR its item code**.
+AND across words is unchanged, and one word may be satisfied by either column:
+
+```
+"hex 10"          -> "hex" from the name, "10" from the code
+"STO-ITEM-2026"   -> finds products by code fragment
+```
+
+**FRONTEND ACTION** — none required. Both endpoints changed together, on purpose:
+the predicate is shared, so the header typeahead and the category listing still
+describe exactly the same product universe. You may want to mention codes in
+placeholder text now that they work.
+
+Still not searchable: description, category, Item Group, Brand. No fuzzy
+matching, no relevance ranking, and family collapse is unchanged — a variant
+family is still returned once as the family, and a generated variant never
+appears on its own even when its code contains the search text.
+
 ## 0. Header product suggestions (OpenAPI 3.8.0)
 
 **New endpoint. Nothing existing changed.**

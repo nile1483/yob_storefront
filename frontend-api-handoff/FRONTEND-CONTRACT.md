@@ -262,8 +262,11 @@ unpriced products excluded, and a **variant family appears once as the family**
 family with the normal family route — it resolves options, it is not directly
 buyable.
 
-**Matching** is the catalogue's: whole words against the product name, AND across
-words, with `%` and `_` treated as literal characters.
+**Matching** is the catalogue's, shared with `get_items`: each word matches the
+product **name or its item code**, AND across words, with `%` and `_` treated as
+literal characters. `hex 10` can take `hex` from the name and `10` from the code,
+and a code fragment such as `STO-ITEM-2026` finds products directly. Description,
+category, Item Group and Brand are not searchable, and there is no fuzzy matching.
 
 **Global scope.** Not filtered by the category being browsed — the same products
 answer from the cart, account, orders or a product page. Authenticated like every

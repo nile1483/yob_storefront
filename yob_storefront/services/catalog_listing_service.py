@@ -220,6 +220,10 @@ def normalize_search(raw):
 
     `%` and `_` are escaped so a buyer typing them searches for those characters
     instead of injecting LIKE wildcards -- "100%" must not match everything.
+
+    A term is matched against the product's display name OR its item code
+    (Phase 26A-1), so "hex 10" needs both words but each may come from either
+    column. See `fetch_candidates`.
     """
 
     if raw is None:
@@ -386,8 +390,20 @@ def fetch_candidates(ctx, category, terms, sort, after_keys, limit, selection=No
 
     for idx, term in enumerate(terms):
         params[f"term{idx}"] = _like_pattern(term)
-        # AND across terms: "red cotton" needs both, not either.
-        where.append(f"i.item_name LIKE %(term{idx})s ESCAPE '\\\\'")
+        # AND across terms, OR across the two identity columns: "red cotton"
+        # needs both words, and each word may be satisfied by either the display
+        # name or the item code (Phase 26A-1).
+        #
+        # ONE predicate, so `get_items` and `get_product_suggestions` cannot
+        # describe different product universes -- the header typeahead and the
+        # category listing must agree about what "hex 10" finds.
+        #
+        # Deliberately only these two columns. Description, category, Item Group
+        # and Brand are NOT searchable: they would make a match unexplainable to
+        # a buyer looking at the row it produced.
+        where.append(
+            f"(i.item_name LIKE %(term{idx})s ESCAPE '\\\\'"
+            f" OR i.item_code LIKE %(term{idx})s ESCAPE '\\\\')")
 
     price_lists = ctx.price_lists
     if not price_lists:

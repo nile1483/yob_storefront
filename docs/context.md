@@ -254,7 +254,7 @@ Price at all. Eligibility is a statement about the base price, never the final r
 
 ```text
 Stage 1  bounded SQL candidates -- category, disabled, is_sales_item, has_variants,
-         end_of_life, item_name search, keyset cursor, plus a BROAD `EXISTS` test for
+         end_of_life, item_name/item_code search, keyset cursor, plus a BROAD `EXISTS` for
          any possibly-applicable positive Item Price.
          A deliberate SUPERSET: false positives are fine, false negatives are lost
          products. It never decides WHICH price wins.
@@ -319,7 +319,9 @@ Two ERPNext guards differ and both are mirrored rather than tidied:
 
 * scope: `scope_type=category` only; `collection`/`all` answer `unsupported_scope`.
   A group category answers `category_not_listable` -- no descendant recursion.
-* search: `item_name` only, whitespace-split, **AND** across words, `%`/`_` escaped.
+* search: `item_name` **OR** `item_code`, whitespace-split, **AND** across words,
+  `%`/`_` escaped. One shared predicate, so the listing and the header typeahead
+  can never describe different product universes (Phase 26A-1).
 * sort: `name_asc` (default) | `name_desc` | `newest`, each with the Item `name` as
   tiebreak. Never `modified` (it reshuffles on edit and breaks the cursor), never price.
 * filters: must be absent or empty; anything else answers `unsupported_filters`.
@@ -1085,7 +1087,7 @@ The endpoint owns no eligibility rules. It reuses the listing's own:
 
 | Stage | Reused | Cost |
 | --- | --- | --- |
-| 1 | `fetch_candidates(category=None, ...)` — the identical SQL: disabled, `is_sales_item`, public slug, family collapse, manufacturer fail-closed, end-of-life, same AND-across-words `item_name` match, same broad Item Price `EXISTS` | one query |
+| 1 | `fetch_candidates(category=None, ...)` — the identical SQL: disabled, `is_sales_item`, public slug, family collapse, manufacturer fail-closed, end-of-life, same AND-across-words `item_name`/`item_code` match, same broad Item Price `EXISTS` | one query |
 | 2 | `is_catalog_eligible()` / `family_has_sellable_variant()` — the authoritative base-price rule | one `get_price_list_rate_for` per candidate |
 | 3 | **skipped** | zero Sales Orders |
 
@@ -1098,6 +1100,22 @@ search, which is what stops a second "searchable" universe forming.
 `fetch_candidates` gained an optional `category=None` for this (global search).
 Absent means the predicate is simply not applied — not a wildcard — and every
 other rule is unchanged, so `get_items` behaves exactly as before.
+
+### Searchable identity (Phase 26A-1)
+
+A search word matches the product's **display name OR its item code**, so a buyer
+can type a code fragment read off a quote (`STO-ITEM-2026`) and find the product.
+AND across words is unchanged, and a single word may be satisfied by either
+column — `hex 10` can take `hex` from the name and `10` from the code.
+
+The change was made in the **shared** predicate inside `fetch_candidates`, not in
+the suggestion layer, so `get_items` and `get_product_suggestions` still describe
+one product universe. `test_search_does_not_match_item_code_only_text` asserted
+the opposite behaviour and was deliberately inverted.
+
+Still not searchable: description, category, Item Group, Brand — matching on any
+of those makes a result unexplainable to the buyer looking at the row it
+produced. No fuzzy matching, and no relevance ranking.
 
 ### Contract
 

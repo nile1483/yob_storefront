@@ -4721,7 +4721,7 @@
       "schema": {
        "type": "string"
       },
-      "description": "matched against item_name only; words are ANDed"
+      "description": "matched against the product name OR its item code; words are ANDed, and each word may be satisfied by either column"
      },
      {
       "name": "filters",
@@ -4879,7 +4879,7 @@
      "catalog"
     ],
     "summary": "Header product-search suggestions",
-    "description": "A few public products for the header typeahead. **Navigation only.**\n\nAt most **8** results, no pagination, no cursor, no facets, no category scope and no money. It is not a listing and not a search-results page: there is no results page for this feature, and Enter does nothing.\n\n**Fewer than 3 characters answers `{\"items\": []}` and queries nothing.** That is not an error -- a buyer mid-word has done nothing wrong. The SPA applies the same floor; the server enforces it rather than trusting it.\n\n**Same products as the catalogue.** Eligibility is the listing's own -- the same candidate rules (public slug, family collapse, manufacturer fail-closed, end-of-life) and the same base-price visibility rule -- so a suggestion is always something `get_items` would list. A generated variant never appears on its own; a family appears once, as the family, with `is_template: true`.\n\n**Search matching** is the catalogue's: whole words against `item_name`, AND across words, `%` and `_` treated as literal characters.\n\nScope is **global** -- the same products answer from the cart, the account page or a product page. Authenticated like every other catalogue endpoint; the Customer comes from the session only, so a buyer is never suggested a product their own catalogue would not list.",
+    "description": "A few public products for the header typeahead. **Navigation only.**\n\nAt most **8** results, no pagination, no cursor, no facets, no category scope and no money. It is not a listing and not a search-results page: there is no results page for this feature, and Enter does nothing.\n\n**Fewer than 3 characters answers `{\"items\": []}` and queries nothing.** That is not an error -- a buyer mid-word has done nothing wrong. The SPA applies the same floor; the server enforces it rather than trusting it.\n\n**Same products as the catalogue.** Eligibility is the listing's own -- the same candidate rules (public slug, family collapse, manufacturer fail-closed, end-of-life) and the same base-price visibility rule -- so a suggestion is always something `get_items` would list. A generated variant never appears on its own; a family appears once, as the family, with `is_template: true`.\n\n**Search matching** is the catalogue's, shared with `get_items`: each word is matched against the product NAME or its ITEM CODE, AND across words, with `%` and `_` treated as literal characters. So `hex 10` can take `hex` from the name and `10` from the code, and a code fragment such as `STO-ITEM-2026` finds products directly. Description, category, Item Group and Brand are not searchable.\n\nScope is **global** -- the same products answer from the cart, the account page or a product page. Authenticated like every other catalogue endpoint; the Customer comes from the session only, so a buyer is never suggested a product their own catalogue would not list.",
     "security": [
      {
       "sessionCookie": []

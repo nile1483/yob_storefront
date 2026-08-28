@@ -369,9 +369,36 @@ class ListingQueryCase(ListingCase):
 
         self.assertEqual(self.names(self.listing(search="red cotton")), [both])
 
-    def test_search_does_not_match_item_code_only_text(self):
-        self.make_item("T22-ZZUNIQUE", item_name="Plain Shirt")
-        self.assertEqual(self.names(self.listing(search="ZZUNIQUE")), [])
+    def test_search_matches_the_item_code_too(self):
+        """Changed deliberately in Phase 26A-1; this test previously asserted the
+        opposite.
+
+        Header search must find a product by a code fragment a buyer has read off
+        a quote or a previous order, and `get_items` shares the one predicate --
+        so the listing gained the same reach rather than the typeahead getting a
+        private rule of its own.
+        """
+
+        coded = self.make_item("T22-ZZUNIQUE", item_name="Plain Shirt")
+
+        self.assertEqual(self.names(self.listing(search="ZZUNIQUE")), [coded])
+
+    def test_a_word_may_be_satisfied_by_either_column(self):
+        """AND across words, OR across the two identity columns."""
+
+        both = self.make_item("T22-HEX10", item_name="Hex Bolt")
+        self.make_item("T22-HEX99", item_name="Washer")
+
+        # "hex" from the name, "10" from the code.
+        self.assertEqual(self.names(self.listing(search="hex 10")), [both])
+
+    def test_search_still_ignores_everything_but_name_and_code(self):
+        """No description, category, Item Group or Brand search crept in."""
+
+        self.make_item("T22-DESC", item_name="Plain Shirt",
+                       description="ZZDESCRIPTIONONLY fabric")
+
+        self.assertEqual(self.names(self.listing(search="ZZDESCRIPTIONONLY")), [])
 
     def test_blank_search_returns_everything(self):
         a = self.make_item("T22-S1")

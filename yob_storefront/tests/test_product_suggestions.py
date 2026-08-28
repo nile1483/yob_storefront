@@ -331,6 +331,93 @@ class SemanticsCase(SuggestionBase):
 
 
 # =========================================================
+# SEARCHABLE IDENTITY  (Phase 26A-1)
+# =========================================================
+
+class IdentitySearchCase(SuggestionBase):
+    """Name OR item code, through the SAME predicate the listing uses."""
+
+    def setUp(self):
+        super().setUp()
+        self.category = self.make_category("p26-ident")
+
+    def test_the_display_name_still_matches(self):
+        self.make_item("_P26-ID-A", self.category.name, name="Quantum Spanner")
+
+        self.assertIn("_P26-ID-A", self.codes("spanner"))
+
+    def test_an_exact_item_code_matches(self):
+        self.make_item("_P26-ID-EXACT", self.category.name, name="Nothing Alike")
+
+        self.assertIn("_P26-ID-EXACT", self.codes("_P26-ID-EXACT"))
+
+    def test_an_item_code_fragment_matches(self):
+        """The real case: a buyer types part of a code from a quote."""
+
+        self.make_item("STO-P26-2026-00042", self.category.name,
+                       name="Nothing Alike Either", slug="sto-p26-42")
+
+        self.assertIn("STO-P26-2026-00042", self.codes("P26-2026"))
+
+    def test_a_word_may_come_from_either_column(self):
+        both = "_P26-ID-10"
+        self.make_item(both, self.category.name, name="Hex Bolt", slug="hex-bolt-10")
+        self.make_item("_P26-ID-99", self.category.name, name="Washer",
+                       slug="washer-99")
+
+        codes = self.codes("hex 10")
+
+        self.assertIn(both, codes)
+        self.assertNotIn("_P26-ID-99", codes)
+
+    def test_a_family_found_by_its_code_returns_the_family_only(self):
+        template, variants = self.make_family("_P26-ID-FAM", self.category.name,
+                                              name="Codeless Family")
+
+        codes = self.codes("_P26-ID-FAM")
+
+        self.assertEqual(codes.count(template.name), 1)
+        for variant in variants:
+            self.assertNotIn(variant, codes,
+                             "a generated variant leaked in via its own code")
+
+    def test_a_variant_code_fragment_never_returns_the_child(self):
+        """A variant's code contains its template's, so this is the leak to fear.
+
+        Searching the family stem must answer with the FAMILY, never with the
+        generated children whose codes start with the same text.
+        """
+
+        template, variants = self.make_family("_P26-ID-STEM", self.category.name,
+                                              name="Stem Family")
+
+        codes = self.codes("_P26-ID-STEM")
+
+        self.assertIn(template.name, codes)
+        for variant in variants:
+            self.assertNotIn(variant, codes)
+
+    def test_description_is_not_searchable(self):
+        self.make_item("_P26-ID-DESC", self.category.name, name="Plain Thing",
+                       description="ZZONLYINDESCRIPTION")
+
+        self.assertEqual(self.codes("ZZONLYINDESCRIPTION"), [])
+
+    def test_code_search_costs_no_extra_pricing(self):
+        from yob_storefront.services import catalog_listing_service as svc
+
+        self.make_item("_P26-ID-COST", self.category.name, name="Cost Probe")
+
+        with patch.object(svc, "price_candidate") as priced:
+            by_name = self.codes("Cost Probe")
+            by_code = self.codes("_P26-ID-COST")
+
+        self.assertIn("_P26-ID-COST", by_name)
+        self.assertIn("_P26-ID-COST", by_code)
+        self.assertFalse(priced.called, "a code search built a Sales Order")
+
+
+# =========================================================
 # RESPONSE SHAPE
 # =========================================================
 
@@ -473,6 +560,21 @@ class ParityCase(SuggestionBase):
         self.assertIn(template.name, suggested)
         for variant in variants:
             self.assertNotIn(variant, suggested)
+
+    def test_parity_holds_for_an_item_code_search_too(self):
+        """One predicate, so both endpoints must answer a CODE search alike."""
+
+        self.make_item("_P26-PAR-CODE", self.category.name, name="Unrelated Name")
+        self.make_item("_P26-PAR-ZERO", self.category.name, name="Unrelated Zero",
+                       price=0)
+
+        suggested = set(self.codes("_P26-PAR"))
+        listed = self.listing_codes("_P26-PAR")
+
+        self.assertEqual(suggested, listed)
+        self.assertIn("_P26-PAR-CODE", suggested)
+        self.assertNotIn("_P26-PAR-ZERO", suggested,
+                         "eligibility was skipped for a code match")
 
 
 # =========================================================
