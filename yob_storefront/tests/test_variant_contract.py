@@ -55,11 +55,23 @@ PRODUCT_DETAIL_KEYS = {
     "pricing", "pricing_rule_label", "pricing_rule_apply_on", "available_rules",
 }
 
+#: Merchandising, added to a PRODUCT PAGE by `get_item` (Phase 27B).
+#:
+#: Deliberately NOT part of `PRODUCT_DETAIL_KEYS` above. That constant is the
+#: shared serializer -- what `resolve_variant` returns -- and merchandising
+#: belongs to the public product entity, not to a resolved SKU: choosing a size
+#: changes price and stock, never the gallery. The split is the contract.
+MERCHANDISING_KEYS = {"gallery", "sections"}
+
+#: What `get_item` returns for a simple product: the serializer plus the page's
+#: own merchandising.
+PRODUCT_PAGE_KEYS = PRODUCT_DETAIL_KEYS | MERCHANDISING_KEYS
+
 #: The published key set of a variant family page.
 FAMILY_KEYS = {
     "name", "item_name", "item_group", "image", "custom_slug",
     "is_template", "is_purchasable", "variant_of", "attributes", "variants",
-}
+} | MERCHANDISING_KEYS
 
 #: The published key set of a listing card, identical for both kinds.
 LISTING_CARD_KEYS = {
@@ -342,7 +354,11 @@ class PublishedShapeCase(ContractBase):
         data = self.resolve(template.name,
                             {COLOUR: self.values["orange"], SIZE: self.values["medium"]})["data"]
 
+        # The SERIALIZER's key set, with no merchandising: a resolved SKU is a
+        # transaction fact, and the family page already carried the gallery.
         self.assertEqual(set(data), PRODUCT_DETAIL_KEYS)
+        self.assertEqual(set(data) & MERCHANDISING_KEYS, set(),
+                         "resolve_variant grew product merchandising")
         self.assertEqual(data["is_template"], 0)
         self.assertEqual(data["is_purchasable"], 1)
         self.assertEqual(data["variant_of"], template.name)
@@ -350,13 +366,16 @@ class PublishedShapeCase(ContractBase):
                          {COLOUR: self.values["orange"], SIZE: self.values["medium"]})
 
     def test_a_simple_item_uses_the_same_serializer(self):
-        """One DTO for a resolved variant and a simple product."""
+        """One DTO for a resolved variant and a simple product, plus the page's
+        own merchandising."""
 
         slug = frappe.db.get_value("Item", SEED_ITEM, "custom_slug")
 
         data = self.get_item(slug)["data"]
 
-        self.assertEqual(set(data), PRODUCT_DETAIL_KEYS)
+        self.assertEqual(set(data), PRODUCT_PAGE_KEYS)
+        # The serializer half is still exactly what `resolve_variant` returns.
+        self.assertEqual(set(data) - MERCHANDISING_KEYS, PRODUCT_DETAIL_KEYS)
         self.assertEqual(data["is_purchasable"], 1)
         self.assertIsNone(data["variant_of"])
         self.assertIsNone(data["selected"])

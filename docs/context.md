@@ -1267,6 +1267,64 @@ two domains share no model, and tests assert the CMS block types, Pages and
 Content Placements are unchanged. In Desk both new DocTypes sit under **Catalog**,
 not under Content, in the Workspace card and the v16 left sidebar alike.
 
+## Product Detail merchandising runtime (Phase 27B)
+
+`catalog.get_item` returns `gallery` and `sections` alongside the existing
+payload, on **both** branches. One request per product page — no separate gallery
+or content endpoint. Both keys are always present and always arrays.
+
+Attached at the two `get_item` branches, deliberately **not** inside
+`build_item_detail`, which is shared with `resolve_variant`: merchandising
+belongs to the public product entity, so choosing a size must not reload a
+gallery. `resolve_variant` is unchanged and carries neither key.
+
+### One owner, resolved before anything is read
+
+`merchandising_owner()` starts from the public product and stops: a simple Item
+or a template answers itself, a generated variant answers `None`. It never scans
+a template's variants for content and never falls back from child to template —
+there is no override chain because a variant owns nothing. A child that acquired
+rows through a direct database edit is still ignored by its family's page.
+
+### Fail closed, without taking the page down
+
+Phase 27A refuses cross-product links and malformed tables at save; this layer
+assumes none of that held (direct edits, restored backups, legacy rows). A block
+whose spec group or table belongs to **another product**, is missing, or is
+malformed is **skipped** — never published, never raised. A section left with no
+publishable blocks is omitted rather than shipped as an empty heading. One bad
+block cannot 500 a product page, and a healthy sibling still renders.
+
+### Stored is not published
+
+Phase 27A keeps the cells of a narrowed table so a merchant can widen it again.
+That makes the projection responsible for hiding them: it reads
+`cint(column_count)` — a Select, so a **string** — and emits only columns
+`1..width`, padding every row to exactly that many cells. Widening republishes
+the retained values.
+
+### Query shape
+
+Bounded by the content model, not the block count: **at most seven** reads for a
+whole page — gallery, sections, blocks, spec groups, spec rows, tables, table
+rows — with the last four batched by `IN (...)`. A page of twelve blocks costs
+the same as one of two, asserted by a query-counting test.
+
+### No transaction work
+
+Merchandising adds **zero** pricing calls: a bare product and a fully
+merchandised one make the identical number of `get_item_pricing` calls, asserted
+by spy. No Sales Order, no variant resolution, no stock or UOM work, and no
+response cache — `get_item` stays customer-priced.
+
+### A separate union from the Phase 25 CMS
+
+`ProductContentBlock` (six types) is not `ContentBlock` (five types), and the
+machine-readable registries are separate too: `x-product-block-fields` beside the
+CMS `x-block-fields`. `rich_text` and `image` appear in both as different shapes.
+A contract guard asserts the runtime matches the published product registry and
+that the CMS one is untouched.
+
 ## Chain verification (Phase 25F)
 
 Not a feature. `tests/test_storefront_chain.py` walks the whole storefront in one

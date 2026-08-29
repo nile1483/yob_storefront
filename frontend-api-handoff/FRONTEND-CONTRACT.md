@@ -331,6 +331,62 @@ looking at it, so this response is **customer-specific** — never cache or shar
 it across users. At most three Product Grids exist across a whole route, enforced
 when the merchant saves, so the response stays bounded.
 
+### Product merchandising: gallery and content (Phase 27B)
+
+`catalog.get_item` now also returns **`gallery`** and **`sections`**, on **both**
+branches — a simple product and a variant family. A product page is still **one
+request**; there is no separate gallery or content call.
+
+```jsonc
+{"gallery":[
+   {"image":"/files/front.jpg","alt_text":"Front view","caption":null,"is_primary":true},
+   {"image":"/files/side.jpg","alt_text":"Side view","caption":"Side profile","is_primary":false}],
+ "sections":[
+   {"title":"Specifications","blocks":[
+     {"type":"key_value","items":[{"key":"Voltage","value":"18 V"}]},
+     {"type":"table","columns":["Model","Torque"],"rows":[["DR-100","40 Nm"]]}]}]}
+```
+
+**Both keys are always present and always arrays.** An unmerchandised product
+answers `[]` — never null, never a missing key — so no existence checks.
+
+**Array order is the merchant's order.** No `sort_order` is published for
+galleries, sections or blocks; render them as they arrive and never re-sort.
+
+**Gallery.** `is_primary` marks which image opens **first**; it does **not** move
+that image in the thumbnail strip. Zero primaries is normal — fall back to the
+first element. `image` stays the legacy Item image and is **never** synthesised
+into a gallery row, so an empty `gallery` genuinely means none was configured and
+you may fall back to `image`.
+
+**Sections.** A published section always has at least one block — empty ones are
+omitted rather than shipped as bare headings, so you need no "is it empty" guard.
+Disabled sections never appear. These are **vertical sections, not tabs**: no tab
+key, accordion mode or layout metadata exists.
+
+**The six block types** — `rich_text` · `key_value` · `table` · `image` ·
+`download` · `video` — discriminated on `type`.
+
+> **This is NOT the Phase 25 `ContentBlock`.** That union serves CMS pages and
+> route slots and carries `section_style`/`content_width`. This one is product
+> merchandising and carries no presentation metadata. `rich_text` and `image`
+> exist in both as **different shapes** — do not share a type or a renderer
+> assumption.
+
+**Tables.** Every row has exactly `columns.length` cells, padded with `""`, so no
+width check is needed. A merchant who narrows a table keeps the wider data in the
+database but you only ever receive the current width.
+
+**Ownership.** Merchandising belongs to the public product: a simple Item's own,
+or the **template's** for a whole family. `resolve_variant` does **not** carry
+`gallery` or `sections` — selecting a size changes the SKU, price and stock, and
+must **not** reload or replace the gallery or the content.
+
+**Safety.** `rich_text` is sanitised on save *and* on read; still render it
+through your own trusted-HTML policy. `video` is an http(s) **URL only** — never
+iframe or embed markup; you decide how to present it. `download.file` is the
+stored Frappe file URL, never a filesystem path.
+
 ### Variant families
 
 A product URL addresses a **simple Item** or a **variant family (Item Template)** —

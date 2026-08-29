@@ -385,7 +385,7 @@
         }
        ]
       },
-      "description": "AUTH\n\nDiscriminate on `data.is_template`: 0 = purchasable product, 1 = variant family carrying `attributes[]` + `variants[]` and NO price. Valid combinations come only from `variants[]`."
+      "description": "AUTH\n\nDiscriminate on `data.is_template`: 0 = purchasable product, 1 = variant family carrying `attributes[]` + `variants[]` and NO price. Valid combinations come only from `variants[]`.\n\nAlso returns `gallery` and `sections` (Phase 27B) on BOTH branches -- always present, always arrays, empty when nothing is configured. Array order is the merchant's; no sort_order is sent. `is_primary` marks the opening image without moving it. Six block types: rich_text, key_value, table, image, download, video -- a DIFFERENT union from the Phase 25 CMS ContentBlock. resolve_variant deliberately carries neither key."
      }
     },
     {

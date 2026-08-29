@@ -10,6 +10,35 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Product Detail carries gallery and content (OpenAPI 3.9.0)
+
+**Additive.** No existing Product Detail field changed meaning; two required
+arrays were added to both branches.
+
+**OLD** — a product page had one `image` and no merchant-authored content.
+
+**CURRENT** — `catalog.get_item` also returns:
+
+```
+gallery    ProductGalleryImage[]      ordered; is_primary marks the opening image
+sections   ProductContentSection[]    ordered; each has >= 1 block
+```
+
+with six block types: `rich_text` · `key_value` · `table` · `image` ·
+`download` · `video`.
+
+**FRONTEND ACTION** — render both from the existing `get_item` call; do **not**
+add a second request. Treat array order as authoritative. Fall back to `image`
+when `gallery` is empty (it is never synthesised into a row). Use the **new**
+`ProductContentBlock` union — it is *not* the Phase 25 `ContentBlock`, and
+`rich_text`/`image` are different shapes in the two unions.
+
+`resolve_variant` is **unchanged** and deliberately carries neither key: selecting
+a variant changes the SKU, price and stock, never the gallery or content, because
+merchandising belongs to the template for a whole family.
+
+`get_product_suggestions` is unchanged and stays its five lightweight fields.
+
 ## 0. Product search now matches the item code too (no version change)
 
 **Behaviour change to an existing endpoint. No request or response field

@@ -290,8 +290,19 @@ def get_item(slug=None, qty=1, auth_context=None):
     if item["has_variants"]:
         return _family_response(item, slug)
 
-    return success_response(build_item_detail(customer, item["name"], qty, slug=slug),
-                            notice="Item loaded")
+    from yob_storefront.services.product_merchandising_service import (
+        project_merchandising,
+    )
+
+    detail = build_item_detail(customer, item["name"], qty, slug=slug)
+
+    # Attached HERE rather than inside `build_item_detail`, which is shared with
+    # `resolve_variant`. Merchandising belongs to the public product entity, and
+    # choosing a size must not reload a gallery -- so the serializer stays money
+    # and identity, and the page's merchandising is added by the page endpoint.
+    detail.update(project_merchandising(item["name"]))
+
+    return success_response(detail, notice="Item loaded")
 
 
 def _family_response(item, slug):
@@ -309,7 +320,16 @@ def _family_response(item, slug):
             status_code=HTTP_UNPROCESSABLE,
         )
 
+    from yob_storefront.services.product_merchandising_service import (
+        project_merchandising,
+    )
+
     matrix = variant_matrix(item["name"])
+
+    # The TEMPLATE's merchandising, which is the family's. Variants are never
+    # scanned for content: a family page shows one gallery whatever the buyer
+    # later selects.
+    merchandising = project_merchandising(item["name"])
 
     return success_response({
         "name": item["name"],
@@ -327,6 +347,9 @@ def _family_response(item, slug):
         "variant_of": None,
         "attributes": matrix["attributes"],
         "variants": matrix["variants"],
+
+        "gallery": merchandising["gallery"],
+        "sections": merchandising["sections"],
     }, notice="Product options loaded")
 
 

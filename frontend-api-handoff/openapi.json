@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.8.0",
+  "version": "3.9.0",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -542,7 +542,9 @@
      "is_purchasable",
      "variant_of",
      "attributes",
-     "variants"
+     "variants",
+     "gallery",
+     "sections"
     ],
     "properties": {
      "name": {
@@ -593,6 +595,305 @@
        "$ref": "#/components/schemas/VariantCombination"
       },
       "description": "THE authority on valid combinations. A pair absent here does not exist: render it disabled, never resolve it."
+     },
+     "gallery": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ProductGalleryImage"
+      },
+      "description": "Ordered gallery. Empty when none is configured -- fall back to `image`, which is never synthesised into a gallery row."
+     },
+     "sections": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ProductContentSection"
+      },
+      "description": "Ordered content sections. Empty when none is configured. Always present on BOTH product branches."
+     }
+    }
+   },
+   "ProductGalleryImage": {
+    "type": "object",
+    "description": "One image of a product's gallery.\n\n**Array order is authoritative** -- it is the merchant's own thumbnail sequence, so no `sort_order` is published and you must not re-sort. `is_primary` says which image should open FIRST; it does not move that image in the strip, and at most one row carries it.\n\nOwned by the public product: a simple Item's own, or a variant TEMPLATE's for the whole family. Selecting a variant never changes the gallery.",
+    "required": [
+     "image",
+     "alt_text",
+     "caption",
+     "is_primary"
+    ],
+    "properties": {
+     "image": {
+      "type": "string",
+      "description": "Relative path as stored (`/files/...`), the same convention `ListingCard` and `ProductDetail.image` use. Never absolute."
+     },
+     "alt_text": {
+      "type": "string",
+      "nullable": true
+     },
+     "caption": {
+      "type": "string",
+      "nullable": true
+     },
+     "is_primary": {
+      "type": "boolean",
+      "description": "At most one per gallery. Zero is normal -- fall back to the first array element."
+     }
+    }
+   },
+   "ProductSpecEntry": {
+    "type": "object",
+    "required": [
+     "key",
+     "value"
+    ],
+    "properties": {
+     "key": {
+      "type": "string",
+      "description": "e.g. `Material`."
+     },
+     "value": {
+      "type": "string",
+      "description": "e.g. `Stainless Steel`."
+     }
+    }
+   },
+   "ProductRichTextBlock": {
+    "type": "object",
+    "description": "Merchant prose. Sanitised on save AND again on read, so stored markup cannot publish a script -- render it through your own trusted-HTML policy regardless; this is defence in depth, not a licence to skip yours.",
+    "required": [
+     "type",
+     "content"
+    ],
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "rich_text"
+      ]
+     },
+     "content": {
+      "type": "string"
+     }
+    }
+   },
+   "ProductKeyValueBlock": {
+    "type": "object",
+    "description": "An ordered specification list. Array order is the merchant's.",
+    "required": [
+     "type",
+     "items"
+    ],
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "key_value"
+      ]
+     },
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ProductSpecEntry"
+      }
+     }
+    }
+   },
+   "ProductTableBlock": {
+    "type": "object",
+    "description": "A bounded 2-6 column table.\n\n**Every row has exactly `columns.length` cells**, padded with empty strings where a cell was left blank, so it can be rendered without a width check. A table narrowed by the merchant keeps its wider data in the database but publishes only the ACTIVE columns -- what you receive is always the current width, never what was once stored.",
+    "required": [
+     "type",
+     "columns",
+     "rows"
+    ],
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "table"
+      ]
+     },
+     "columns": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 6,
+      "items": {
+       "type": "string"
+      },
+      "description": "Header labels, left to right."
+     },
+     "rows": {
+      "type": "array",
+      "items": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "description": "Each row has exactly as many cells as `columns`."
+     }
+    }
+   },
+   "ProductImageBlock": {
+    "type": "object",
+    "description": "One image inside a content section. Distinct from a gallery row: it has no `is_primary` and is not part of the thumbnail strip. Not the Phase 25 CMS media row either -- there is no desktop/mobile art direction and no destination.",
+    "required": [
+     "type",
+     "image",
+     "alt_text",
+     "caption"
+    ],
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "image"
+      ]
+     },
+     "image": {
+      "type": "string",
+      "description": "Relative path as stored."
+     },
+     "alt_text": {
+      "type": "string",
+      "nullable": true
+     },
+     "caption": {
+      "type": "string",
+      "nullable": true
+     }
+    }
+   },
+   "ProductDownloadBlock": {
+    "type": "object",
+    "description": "A downloadable file. `file` is the stored Frappe file URL -- never a filesystem path, and no File DocType metadata is exposed.",
+    "required": [
+     "type",
+     "file",
+     "label",
+     "description"
+    ],
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "download"
+      ]
+     },
+     "file": {
+      "type": "string",
+      "description": "e.g. `/files/manual.pdf`."
+     },
+     "label": {
+      "type": "string",
+      "nullable": true,
+      "description": "What the buyer reads, e.g. `Installation Manual`."
+     },
+     "description": {
+      "type": "string",
+      "nullable": true
+     }
+    }
+   },
+   "ProductVideoBlock": {
+    "type": "object",
+    "description": "A video ADDRESS. Only http(s) URLs are ever published -- no iframe, no embed HTML, no provider script. You decide how to present it safely.",
+    "required": [
+     "type",
+     "url"
+    ],
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "video"
+      ]
+     },
+     "url": {
+      "type": "string"
+     }
+    }
+   },
+   "ProductContentBlock": {
+    "description": "One block of product content, discriminated by `type`.\n\n**This is NOT the Phase 25 `ContentBlock`.** That union serves merchant-authored CMS pages and route slots and carries `section_style`/`content_width`; this one is product merchandising and carries no presentation metadata at all. `rich_text` and `image` appear in both unions as different shapes -- do not share a type.",
+    "oneOf": [
+     {
+      "$ref": "#/components/schemas/ProductRichTextBlock"
+     },
+     {
+      "$ref": "#/components/schemas/ProductKeyValueBlock"
+     },
+     {
+      "$ref": "#/components/schemas/ProductTableBlock"
+     },
+     {
+      "$ref": "#/components/schemas/ProductImageBlock"
+     },
+     {
+      "$ref": "#/components/schemas/ProductDownloadBlock"
+     },
+     {
+      "$ref": "#/components/schemas/ProductVideoBlock"
+     }
+    ],
+    "discriminator": {
+     "propertyName": "type",
+     "mapping": {
+      "rich_text": "#/components/schemas/ProductRichTextBlock",
+      "key_value": "#/components/schemas/ProductKeyValueBlock",
+      "table": "#/components/schemas/ProductTableBlock",
+      "image": "#/components/schemas/ProductImageBlock",
+      "download": "#/components/schemas/ProductDownloadBlock",
+      "video": "#/components/schemas/ProductVideoBlock"
+     }
+    },
+    "x-product-block-always-present": [
+     "type"
+    ],
+    "x-product-block-fields": {
+     "rich_text": [
+      "content"
+     ],
+     "key_value": [
+      "items"
+     ],
+     "table": [
+      "columns",
+      "rows"
+     ],
+     "image": [
+      "image",
+      "alt_text",
+      "caption"
+     ],
+     "download": [
+      "file",
+      "label",
+      "description"
+     ],
+     "video": [
+      "url"
+     ]
+    }
+   },
+   "ProductContentSection": {
+    "type": "object",
+    "description": "One ordered content section. Array order is the merchant's order; there is no `sort_order` on the wire.\n\n**A published section always has at least one block** -- an enabled section whose blocks all failed to project is omitted entirely rather than shipped as an empty heading. Disabled sections never appear.\n\nSections are vertical content, NOT tabs: there is no tab key, accordion mode, component name or layout metadata, and none will be added.",
+    "required": [
+     "title",
+     "blocks"
+    ],
+    "properties": {
+     "title": {
+      "type": "string",
+      "description": "The heading a buyer reads."
+     },
+     "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+       "$ref": "#/components/schemas/ProductContentBlock"
+      }
      }
     }
    },
@@ -628,7 +929,9 @@
      "pricing",
      "pricing_rule_label",
      "pricing_rule_apply_on",
-     "available_rules"
+     "available_rules",
+     "gallery",
+     "sections"
     ],
     "properties": {
      "name": {
@@ -754,6 +1057,20 @@
       "items": {
        "type": "string"
       }
+     },
+     "gallery": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ProductGalleryImage"
+      },
+      "description": "Ordered gallery. Empty when none is configured -- fall back to `image`, which is never synthesised into a gallery row."
+     },
+     "sections": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ProductContentSection"
+      },
+      "description": "Ordered content sections. Empty when none is configured. Always present on BOTH product branches."
      }
     }
    },
@@ -3668,6 +3985,105 @@
            "notice": "Item loaded"
           }
          }
+        },
+        "example": {
+         "message": {
+          "data": {
+           "name": "DRILL-001",
+           "item_name": "Cordless Drill",
+           "custom_slug": "cordless-drill",
+           "image": "/files/drill.jpg",
+           "is_template": 0,
+           "is_purchasable": 1,
+           "rate": 4500.0,
+           "uom": "Nos",
+           "gallery": [
+            {
+             "image": "/files/drill-front.jpg",
+             "alt_text": "Front view",
+             "caption": null,
+             "is_primary": true
+            },
+            {
+             "image": "/files/drill-side.jpg",
+             "alt_text": "Side view",
+             "caption": "Side profile",
+             "is_primary": false
+            }
+           ],
+           "sections": [
+            {
+             "title": "Overview",
+             "blocks": [
+              {
+               "type": "rich_text",
+               "content": "<p>An 18V brushless drill.</p>"
+              },
+              {
+               "type": "image",
+               "image": "/files/drill-detail.jpg",
+               "alt_text": "Chuck detail",
+               "caption": "Keyless chuck"
+              },
+              {
+               "type": "video",
+               "url": "https://videos.example.com/drill-overview"
+              }
+             ]
+            },
+            {
+             "title": "Specifications",
+             "blocks": [
+              {
+               "type": "key_value",
+               "items": [
+                {
+                 "key": "Voltage",
+                 "value": "18 V"
+                },
+                {
+                 "key": "Chuck",
+                 "value": "13 mm keyless"
+                }
+               ]
+              },
+              {
+               "type": "table",
+               "columns": [
+                "Model",
+                "Torque",
+                "Weight"
+               ],
+               "rows": [
+                [
+                 "DR-100",
+                 "40 Nm",
+                 "1.4 kg"
+                ],
+                [
+                 "DR-200",
+                 "60 Nm",
+                 "1.7 kg"
+                ]
+               ]
+              }
+             ]
+            },
+            {
+             "title": "Documents",
+             "blocks": [
+              {
+               "type": "download",
+               "file": "/files/drill-manual.pdf",
+               "label": "Installation Manual",
+               "description": "PDF, 2.4 MB"
+              }
+             ]
+            }
+           ]
+          },
+          "notice": "Item loaded"
+         }
         }
        }
       }
@@ -3704,7 +4120,7 @@
       }
      }
     },
-    "description": "**AUTHENTICATED STOREFRONT**\n\nOne PUBLIC product page. A slug addresses a **simple Item** or a **variant FAMILY** (Item Template) -- never an individual variant: variants have no public URL and are reached by resolving attributes on the family page.\n\nTWO RESPONSE MODES, discriminated by `data.is_template`:\n\n* `is_template = 0` -- a purchasable product; the shared product-detail payload.\n* `is_template = 1` -- a family; `attributes[]` + `variants[]` and **no price at all**, because ERPNext refuses an Item Price on a template.\n\nValid combinations come ONLY from `variants[]`, which lists actual salable variants. Attribute values are global in ERPNext, so a cross-product of `attributes[].values` invents combinations nobody can buy -- render those disabled.\n\nA `Manufacturer`-based family answers `variant_family_unsupported` (422).",
+    "description": "**AUTHENTICATED STOREFRONT**\n\nOne PUBLIC product page. A slug addresses a **simple Item** or a **variant FAMILY** (Item Template) -- never an individual variant: variants have no public URL and are reached by resolving attributes on the family page.\n\nTWO RESPONSE MODES, discriminated by `data.is_template`:\n\n* `is_template = 0` -- a purchasable product; the shared product-detail payload.\n* `is_template = 1` -- a family; `attributes[]` + `variants[]` and **no price at all**, because ERPNext refuses an Item Price on a template.\n\nValid combinations come ONLY from `variants[]`, which lists actual salable variants. Attribute values are global in ERPNext, so a cross-product of `attributes[].values` invents combinations nobody can buy -- render those disabled.\n\nA `Manufacturer`-based family answers `variant_family_unsupported` (422).\n\n**Merchandising (Phase 27B).** `gallery` and `sections` arrive with this response on BOTH branches -- a simple product and a variant family -- so a product page is ONE request. Both are always present and always arrays; an unmerchandised product answers `[]`, never null and never a missing key.\n\nThey belong to the public product: a simple Item's own, or the TEMPLATE's for a whole family. `resolve_variant` does not carry them, and selecting a variant never changes the gallery or the content.\n\n`image` is unchanged and is NOT synthesised into a gallery row, so an empty `gallery` genuinely means none was configured and you may fall back to `image`.",
     "parameters": [
      {
       "name": "slug",
