@@ -51,11 +51,20 @@ app_include_js = "/assets/yob_storefront/js/yob.js"
 # not arrive with a fresh install unless someone remembers the fixture, and it
 # cannot be reviewed in a pull request. These files migrate with the app.
 doctype_js = {
-    "Item": "public/js/item_storefront_filters.js",
+    # A list: Frappe accumulates doctype_js values and loads every file, so the
+    # filter grid helper and the Product Content launcher stay separate concerns.
+    "Item": [
+        "public/js/item_storefront_filters.js",
+        "public/js/item_storefront_content.js",
+    ],
     # Dependent Route -> Position picker. Convenience only; the placement
     # controller re-validates the pair against the same registry on save.
     "YOB Storefront Content Placement":
         "public/js/yob_storefront_content_placement.js",
+    # Shows only the columns a table actually uses. Presentation only; the
+    # controller requires the labels and clears the unused cells.
+    "YOB Storefront Product Table":
+        "public/js/yob_storefront_product_table.js",
 }
 
 doctype_tree_js = {
@@ -211,6 +220,9 @@ doc_events = {
         "validate": [
             "yob_storefront.utils.item_slug.validate_unique_slug",
             "yob_storefront.utils.item_storefront_filters.validate_item_storefront_filters",
+            # Same gate, same reason: a generated variant owns no merchandising,
+            # and a Client Script cannot see Data Import or the REST API.
+            "yob_storefront.utils.item_gallery.validate_item_gallery",
         ],
         "on_update": "yob_storefront.utils.cache.clear_item_cache",
         "after_insert": "yob_storefront.utils.cache.clear_item_cache",

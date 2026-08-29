@@ -223,18 +223,28 @@ def ensure_custom_fields():
                         "and is never the storefront's taxonomy."
                     ),
                 },
+                # The tab was called "Storefront Filters" when filters were all it
+                # held. It now carries three groups, so the LABEL changes and the
+                # fieldname does not -- renaming the field would orphan nothing but
+                # would rewrite layout on every existing site for no gain.
                 {
                     "fieldname": "custom_storefront_tab",
-                    "label": "Storefront Filters",
+                    "label": "Storefront",
                     "fieldtype": "Tab Break",
                     "insert_after": "dashboard_tab",
+                },
+                {
+                    "fieldname": "custom_storefront_filters_section",
+                    "label": "Filters",
+                    "fieldtype": "Section Break",
+                    "insert_after": "custom_storefront_tab",
                 },
                 {
                     "fieldname": "custom_storefront_filter_set",
                     "label": "Storefront Filter Set",
                     "fieldtype": "Link",
                     "options": "YOB Storefront Filter Set",
-                    "insert_after": "custom_storefront_tab",
+                    "insert_after": "custom_storefront_filters_section",
                     "description": (
                         "ADMIN SCOPE for this product's merchandising metadata: "
                         "the Filters below may only come from this set. It is NOT "
@@ -252,6 +262,44 @@ def ensure_custom_fields():
                         "Merchandising facets for catalog listing. Unrelated to "
                         "ERPNext variant attributes, which resolve an actual SKU."
                     ),
+                },
+                # ---------------- GALLERY (Phase 27A) ----------------
+                {
+                    "fieldname": "custom_storefront_gallery_section",
+                    "label": "Gallery",
+                    "fieldtype": "Section Break",
+                    "insert_after": "custom_storefront_filters",
+                },
+                {
+                    "fieldname": "custom_storefront_gallery",
+                    "label": "Gallery Images",
+                    "fieldtype": "Table",
+                    "options": "YOB Storefront Product Gallery Image",
+                    "insert_after": "custom_storefront_gallery_section",
+                    "description": (
+                        "Images for this product's page, lowest Sort Order first. "
+                        "At most one may be primary; with none set the runtime "
+                        "uses the first ordered image. A generated variant owns no "
+                        "gallery -- the family template owns the whole family's."
+                    ),
+                },
+                # ------------- PRODUCT CONTENT (Phase 27A) -------------
+                #
+                # Sections are standalone documents (Frappe has no nested child
+                # table), so the Item shows a launcher rather than an inline grid.
+                # The HTML field is replaced at runtime by `item_storefront.js`
+                # with a live count and buttons scoped to THIS product.
+                {
+                    "fieldname": "custom_storefront_content_section",
+                    "label": "Product Content",
+                    "fieldtype": "Section Break",
+                    "insert_after": "custom_storefront_gallery",
+                },
+                {
+                    "fieldname": "custom_storefront_content_html",
+                    "label": "Product Content",
+                    "fieldtype": "HTML",
+                    "insert_after": "custom_storefront_content_section",
                 },
             ],
             "Payment Request": [

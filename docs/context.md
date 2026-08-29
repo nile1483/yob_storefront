@@ -1132,6 +1132,141 @@ Authenticated like every catalogue endpoint; the Customer comes from
 `auth_context` only, and a test proves a product priced solely for another
 customer is never suggested.
 
+## Product Detail merchandising (Phase 27A)
+
+Administration and data model only — there is **no runtime API** for this yet
+(27B), and the published OpenAPI is untouched at 3.8.0.
+
+### Item > Storefront
+
+The Item tab formerly labelled `Storefront Filters` is now `Storefront` and holds
+three groups. Only the LABEL changed; `custom_storefront_tab` keeps its fieldname,
+so no existing site's data or layout was rewritten.
+
+```
+Item > Storefront
+├── Filters          custom_storefront_filter_set + custom_storefront_filters (unchanged)
+├── Gallery          custom_storefront_gallery -> YOB Storefront Product Gallery Image
+└── Product Content  launcher into the standalone Section documents
+```
+
+### The ownership rule
+
+Exactly one entity owns a public product's images and content:
+
+| Entity | Owns merchandising |
+| --- | --- |
+| simple Item | its own |
+| variant TEMPLATE | the whole family's |
+| generated variant | **nothing, ever** |
+
+There is deliberately **no variant→template fallback**, because a variant holds
+nothing to fall back *from*: the template's content simply IS the family's, and
+the family is what a buyer navigates to (Phase 24). Ownership is judged only by
+ERPNext's `variant_of`, never by an item-code pattern — a naming convention is a
+coincidence, not a data model. Enforcement is on the server
+(`Item.validate` + the Section controller), because Data Import, the REST API and
+`bench execute` never run a Client Script.
+
+### Gallery
+
+`YOB Storefront Product Gallery Image` (child of Item): `image` (Attach Image,
+required), `is_primary`, `sort_order`, `alt_text`, `caption`. Ordering is
+`sort_order` then grid `idx`, so a table of all-zero sort orders is still
+deterministic. Zero or one primary is valid; **two are refused rather than
+silently repaired** — a silent fix would edit an earlier decision the merchant
+would never see. No data cap: the UI shows roughly five thumbnails, but that is a
+rendering concern, not a schema one.
+
+### Product Content is section-first, and sections are standalone
+
+Verified empirically: **not one of the 350 child DocTypes in Frappe or ERPNext
+owns a `Table` field**, and `load_children_from_db` never recurses. Nested child
+tables do not work, so `Item → sections → blocks` is impossible as children.
+
+```
+YOB Storefront Product Content Section   (normal doc, Link -> Item)
+  └── blocks  ->  YOB Storefront Product Content Block  (child)
+```
+
+That buys real ordered blocks, real validation and a real grid editor, for the
+price of one link back to the Item. The Item's Product Content panel is the
+bridge: it shows the section count and offers *Manage sections* and *Add section*
+scoped to that product, with `item` pre-filled. Editing happens in the Section
+document, which is where the block grid lives.
+
+### Block types
+
+`rich_text` · `key_value` · `table` · `image` · `download` · `video`
+
+Each block carries only its own fields; the rest are cleared on save, so a block
+that changed type cannot leak a stale value into a later projection. `rich_text`
+is sanitised on save (first boundary, not the only one). `video` stores an
+**http(s) URL only** — embed markup, iframes and scripts are refused, so a
+merchant cannot author a script-injection surface in Desk. `download` uses
+Frappe Attach semantics, never a filesystem path. The content `image` block is
+deliberately distinct from a Gallery row and carries no `is_primary`.
+
+### Structured blocks store real rows, never JSON
+
+A child table cannot nest, so the two structured types link to their own small
+normal documents:
+
+| Block | Document | Shape |
+| --- | --- | --- |
+| `key_value` | `YOB Storefront Product Spec Group` | ordered `key_label` / `value_text` grid |
+| `table` | `YOB Storefront Product Table` | 2–6 fixed columns + a row grid |
+
+**The table is bounded rather than free-form.** The three alternatives were
+pasted JSON (not an admin experience), a normalised `(row_index, column, value)`
+grid (an admin typing row indices by hand), or fixed columns. Two to six covers
+specification and comparison tables and keeps the editor an ordinary Frappe grid
+with no custom widget: `column_count` is a Select and each **active** column
+needs a label. Row order is the grid's own `idx` — dragged, never typed. An
+app-owned Desk script hides the inactive columns; the controller enforces the
+same bound, because Data Import never loads a script.
+
+**Width is a view, not a deletion.** Labels and cells beyond `column_count` are
+hidden in Desk, excluded from validation and excluded from the runtime
+projection, but they are **kept in the database exactly as entered**. Narrowing
+6 → 3 and back returns the original columns 4–6 untouched: a dropdown change is a
+presentation decision and must never silently destroy merchant work. An inactive
+blank label therefore cannot block a save either.
+
+> **Phase 27B note.** Because inactive data persists, the projection carries the
+> whole responsibility for hiding it: emit columns and cells `1..cint(column_count)`
+> **only**, and ignore whatever is stored beyond that. `column_count` is a Select,
+> so it arrives as a **string** — compare it through `cint()`, never as an integer.
+> Persisted does not mean published.
+
+A test asserts no `JSON` or `Code` field exists anywhere in this model.
+
+### Structured content belongs to ONE product
+
+`item` is **required** on both Spec Group and Product Table, and a Section may
+only link to structured data owned by its own product — `Section.item` must equal
+the linked document's `item`. Reuse *within* one product is fine and useful (two
+sections showing the same specification set); reuse *across* products is refused,
+because it would make one product's page mutable from another product's admin
+screen and nobody editing the document would know whose pages they were changing.
+
+Generated variants cannot own a Spec Group or a Product Table either, by the same
+`variant_of` rule that governs galleries and sections.
+
+### Not a page builder
+
+No tab key, accordion mode, component name, template, CSS/Tailwind class, width,
+breakpoint, background or HTML wrapper on any of these DocTypes — asserted by
+test. Product content is structured merchandising data; Angular owns rendering.
+
+### Separate from the Phase 25 CMS
+
+`YOB Storefront Product Content Block` is a dedicated child DocType and is **not**
+the Phase 25 `YOB Storefront Block` (a reusable master for marketing pages). The
+two domains share no model, and tests assert the CMS block types, Pages and
+Content Placements are unchanged. In Desk both new DocTypes sit under **Catalog**,
+not under Content, in the Workspace card and the v16 left sidebar alike.
+
 ## Chain verification (Phase 25F)
 
 Not a feature. `tests/test_storefront_chain.py` walks the whole storefront in one

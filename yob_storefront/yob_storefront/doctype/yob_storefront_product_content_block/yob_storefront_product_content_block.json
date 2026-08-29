@@ -1,0 +1,132 @@
+{
+ "actions": [],
+ "creation": "2026-08-29 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "block_type",
+  "sort_order",
+  "section_break_content",
+  "content",
+  "spec_group",
+  "product_table",
+  "image",
+  "image_alt_text",
+  "image_caption",
+  "download_file",
+  "download_label",
+  "download_description",
+  "video_url"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "description": "What this block holds. Each type reads only its own fields; the others are cleared on save.",
+   "fieldname": "block_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "\nrich_text\nkey_value\ntable\nimage\ndownload\nvideo",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "Lowest first, grid row order breaks ties.",
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Sort Order"
+  },
+  {
+   "fieldname": "section_break_content",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:doc.block_type=='rich_text'",
+   "description": "rich_text. Sanitised on save; scripts and event handlers are removed.",
+   "fieldname": "content",
+   "fieldtype": "Text Editor",
+   "label": "Rich Text"
+  },
+  {
+   "columns": 3,
+   "depends_on": "eval:doc.block_type=='key_value'",
+   "description": "key_value. Edited as an ordered grid of key/value rows in its own document -- never as pasted JSON -- and reusable across products.",
+   "fieldname": "spec_group",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Spec Group",
+   "options": "YOB Storefront Product Spec Group"
+  },
+  {
+   "columns": 2,
+   "depends_on": "eval:doc.block_type=='table'",
+   "description": "table. A bounded 2-6 column table edited as an ordinary grid in its own document -- never pasted JSON, and owned by this same product.",
+   "fieldname": "product_table",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Product Table",
+   "options": "YOB Storefront Product Table"
+  },
+  {
+   "depends_on": "eval:doc.block_type=='image'",
+   "description": "image. Distinct from the product Gallery: this one sits inside a content section.",
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "label": "Image"
+  },
+  {
+   "depends_on": "eval:doc.block_type=='image'",
+   "fieldname": "image_alt_text",
+   "fieldtype": "Data",
+   "label": "Image Alt Text"
+  },
+  {
+   "depends_on": "eval:doc.block_type=='image'",
+   "fieldname": "image_caption",
+   "fieldtype": "Small Text",
+   "label": "Image Caption"
+  },
+  {
+   "depends_on": "eval:doc.block_type=='download'",
+   "description": "download. A Frappe File; never a raw filesystem path.",
+   "fieldname": "download_file",
+   "fieldtype": "Attach",
+   "label": "File"
+  },
+  {
+   "depends_on": "eval:doc.block_type=='download'",
+   "description": "What the buyer sees, e.g. `Datasheet (PDF)`.",
+   "fieldname": "download_label",
+   "fieldtype": "Data",
+   "label": "Download Label"
+  },
+  {
+   "depends_on": "eval:doc.block_type=='download'",
+   "fieldname": "download_description",
+   "fieldtype": "Small Text",
+   "label": "Download Description"
+  },
+  {
+   "depends_on": "eval:doc.block_type=='video'",
+   "description": "video. An http(s) URL only. Embed HTML, iframes and scripts are refused -- the client decides how to present the URL safely.",
+   "fieldname": "video_url",
+   "fieldtype": "Data",
+   "label": "Video URL"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-29 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront Product Content Block",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

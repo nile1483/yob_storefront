@@ -1,0 +1,77 @@
+{
+ "actions": [],
+ "creation": "2026-08-29 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "col_1",
+  "col_2",
+  "col_3",
+  "col_4",
+  "col_5",
+  "col_6"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "description": "Cell for column 1.",
+   "fieldname": "col_1",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Column 1"
+  },
+  {
+   "columns": 1,
+   "description": "Cell for column 2.",
+   "fieldname": "col_2",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Column 2"
+  },
+  {
+   "columns": 1,
+   "description": "Cell for column 3.",
+   "fieldname": "col_3",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Column 3"
+  },
+  {
+   "columns": 1,
+   "description": "Cell for column 4.",
+   "fieldname": "col_4",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Column 4"
+  },
+  {
+   "columns": 1,
+   "description": "Cell for column 5.",
+   "fieldname": "col_5",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Column 5"
+  },
+  {
+   "columns": 1,
+   "description": "Cell for column 6.",
+   "fieldname": "col_6",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Column 6"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-29 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront Product Table Row",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

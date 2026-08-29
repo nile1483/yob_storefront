@@ -134,7 +134,13 @@ class InstallCase(unittest.TestCase):
 
         app_root = pathlib.Path(frappe.get_app_path("yob_storefront"))
 
-        for relative in list(hooks.doctype_js.values()) + list(hooks.doctype_tree_js.values()):
+        # A doctype_js value is a path OR a list of them -- Frappe accumulates
+        # hook values and loads every file, and `Item` now carries two.
+        declared = list(hooks.doctype_js.values()) + list(hooks.doctype_tree_js.values())
+        paths = [p for value in declared
+                 for p in ([value] if isinstance(value, str) else value)]
+
+        for relative in paths:
             self.assertTrue((app_root / relative).exists(), f"{relative} is missing")
 
         self.assertFalse(

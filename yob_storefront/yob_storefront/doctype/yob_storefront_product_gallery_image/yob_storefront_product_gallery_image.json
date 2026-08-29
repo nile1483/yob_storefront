@@ -1,0 +1,68 @@
+{
+ "actions": [],
+ "creation": "2026-08-29 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "image",
+  "is_primary",
+  "sort_order",
+  "alt_text",
+  "caption"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "description": "Stored as a Frappe File. The storefront serves the stored path; no external media host and no base64.",
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "in_list_view": 1,
+   "label": "Image",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "description": "At most one row per product may be primary. Optional -- with none set, the runtime will simply use the first ordered image.",
+   "fieldname": "is_primary",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Primary"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "Lowest first. Ties break on grid row order, so the sequence is always deterministic even when every row is left at 0.",
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Sort Order"
+  },
+  {
+   "columns": 3,
+   "description": "Accessible description. Optional.",
+   "fieldname": "alt_text",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Alt Text"
+  },
+  {
+   "description": "Shown with the image. Optional.",
+   "fieldname": "caption",
+   "fieldtype": "Small Text",
+   "label": "Caption"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-29 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront Product Gallery Image",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
