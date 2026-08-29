@@ -423,7 +423,7 @@
         }
        ]
       },
-      "description": "AUTH\n\nA COMPLETE attribute selection -> the actual variant, priced. `attributes` is URL-encoded JSON containing every attribute of the family.\n\n422 `variant_attributes_required` when incomplete; 422 `variant_not_available` when the combination has no salable variant. Send `data.name` to add_to_cart."
+      "description": "AUTH\n\nA COMPLETE attribute selection -> the actual variant, priced. `attributes` is URL-encoded JSON containing every attribute of the family.\n\n422 `variant_attributes_required` when incomplete; 422 `variant_not_available` when the combination has no salable variant. Send `data.name` to add_to_cart.\n\nReturns the RESOLVED SKU detail only -- ProductDetail, with no gallery and no sections. Merchandising belongs to the public product (a simple Item, or a family's template) and arrives with get_item; selecting a variant changes price, UOM and stock, never the gallery or the content."
      }
     },
     {

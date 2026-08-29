@@ -1278,6 +1278,29 @@ Attached at the two `get_item` branches, deliberately **not** inside
 belongs to the public product entity, so choosing a size must not reload a
 gallery. `resolve_variant` is unchanged and carries neither key.
 
+### A page and a resolved SKU are different schemas (27B-1)
+
+The runtime split above has a contract counterpart, and 3.9.0 got it wrong:
+`gallery`/`sections` were made required on `ProductDetail`, which is *also* what
+`resolve_variant` returns, so a strictly generated client expected merchandising
+from a variant selection. Corrected in **3.9.1** by composition rather than by
+changing behaviour:
+
+```
+ProductDetail          resolved SKU detail      -- no merchandising
+ProductMerchandising   { gallery, sections }    -- both required
+ProductPageDetail      allOf: ProductDetail + ProductMerchandising
+VariantFamily          allOf: family fields + ProductMerchandising
+
+get_item        -> oneOf [ ProductPageDetail, VariantFamily ]
+resolve_variant -> ProductDetail
+```
+
+Guards read the actual `$ref`/`allOf` structure and resolve composition, because
+prose is what failed to catch the conflation the first time. The runtime constants
+`PRODUCT_DETAIL_KEYS`, `MERCHANDISING_KEYS` and `PRODUCT_PAGE_KEYS` stay distinct
+and are asserted against the schema, so the two cannot be merged again.
+
 ### One owner, resolved before anything is read
 
 `merchandising_owner()` starts from the public product and stops: a simple Item

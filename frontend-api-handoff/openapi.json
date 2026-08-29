@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.9.0",
+  "version": "3.9.1",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -530,87 +530,78 @@
     }
    },
    "VariantFamily": {
-    "type": "object",
-    "description": "A variant FAMILY (Item Template). Never priced and never purchasable: ERPNext refuses an Item Price on a template. Told apart from a product by `is_template = 1`.",
-    "required": [
-     "name",
-     "item_name",
-     "item_group",
-     "image",
-     "custom_slug",
-     "is_template",
-     "is_purchasable",
-     "variant_of",
-     "attributes",
-     "variants",
-     "gallery",
-     "sections"
-    ],
-    "properties": {
-     "name": {
-      "type": "string",
-      "description": "the TEMPLATE item code; pass it as `template` to resolve_variant"
-     },
-     "item_name": {
-      "type": "string"
-     },
-     "item_group": {
-      "type": "string"
-     },
-     "image": {
-      "type": "string",
-      "nullable": true
-     },
-     "custom_slug": {
-      "type": "string",
-      "description": "the public URL segment; belongs to the family, never to a variant"
-     },
-     "is_template": {
-      "type": "integer",
-      "enum": [
-       1
-      ]
-     },
-     "is_purchasable": {
-      "type": "integer",
-      "enum": [
-       0
+    "description": "A variant family's PAGE: identity, the selectable matrix, and the TEMPLATE's merchandising, which is the whole family's. Selecting a variant afterwards does not change it.",
+    "allOf": [
+     {
+      "type": "object",
+      "required": [
+       "name",
+       "item_name",
+       "item_group",
+       "image",
+       "custom_slug",
+       "is_template",
+       "is_purchasable",
+       "variant_of",
+       "attributes",
+       "variants"
       ],
-      "description": "0 always. Adding this code to the cart answers item_is_template."
-     },
-     "variant_of": {
-      "type": "string",
-      "nullable": true,
-      "description": "null on a family"
-     },
-     "attributes": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/VariantAttribute"
+      "properties": {
+       "name": {
+        "type": "string",
+        "description": "the TEMPLATE item code; pass it as `template` to resolve_variant"
+       },
+       "item_name": {
+        "type": "string"
+       },
+       "item_group": {
+        "type": "string"
+       },
+       "image": {
+        "type": "string",
+        "nullable": true
+       },
+       "custom_slug": {
+        "type": "string",
+        "description": "the public URL segment; belongs to the family, never to a variant"
+       },
+       "is_template": {
+        "type": "integer",
+        "enum": [
+         1
+        ]
+       },
+       "is_purchasable": {
+        "type": "integer",
+        "enum": [
+         0
+        ],
+        "description": "0 always. Adding this code to the cart answers item_is_template."
+       },
+       "variant_of": {
+        "type": "string",
+        "nullable": true,
+        "description": "null on a family"
+       },
+       "attributes": {
+        "type": "array",
+        "items": {
+         "$ref": "#/components/schemas/VariantAttribute"
+        }
+       },
+       "variants": {
+        "type": "array",
+        "items": {
+         "$ref": "#/components/schemas/VariantCombination"
+        },
+        "description": "THE authority on valid combinations. A pair absent here does not exist: render it disabled, never resolve it."
+       }
       }
      },
-     "variants": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/VariantCombination"
-      },
-      "description": "THE authority on valid combinations. A pair absent here does not exist: render it disabled, never resolve it."
-     },
-     "gallery": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/ProductGalleryImage"
-      },
-      "description": "Ordered gallery. Empty when none is configured -- fall back to `image`, which is never synthesised into a gallery row."
-     },
-     "sections": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/ProductContentSection"
-      },
-      "description": "Ordered content sections. Empty when none is configured. Always present on BOTH product branches."
+     {
+      "$ref": "#/components/schemas/ProductMerchandising"
      }
-    }
+    ]
    },
    "ProductGalleryImage": {
     "type": "object",
@@ -899,7 +890,7 @@
    },
    "ProductDetail": {
     "type": "object",
-    "description": "The shared product-detail serializer. Returned by get_item for a simple Item and by resolve_variant for a resolved variant, so one DTO serves both. Every monetary and unit value comes from ERPNext's own pricing of a temporary Sales Order.",
+    "description": "One resolved, priced product: a simple Item or a variant SKU returned by `resolve_variant`.\n\n**Transaction detail only -- it carries NO merchandising.** Gallery and content belong to the public product entity (a simple Item, or a family's TEMPLATE), not to a resolved SKU: choosing a size changes the price, UOM and stock, and must never reload the gallery. A product PAGE is `ProductPageDetail`, which is this schema plus merchandising.\n\nThe shared product-detail serializer. Returned by get_item for a simple Item and by resolve_variant for a resolved variant, so one DTO serves both. Every monetary and unit value comes from ERPNext's own pricing of a temporary Sales Order.",
     "required": [
      "name",
      "item_name",
@@ -929,9 +920,7 @@
      "pricing",
      "pricing_rule_label",
      "pricing_rule_apply_on",
-     "available_rules",
-     "gallery",
-     "sections"
+     "available_rules"
     ],
     "properties": {
      "name": {
@@ -1057,7 +1046,17 @@
       "items": {
        "type": "string"
       }
-     },
+     }
+    }
+   },
+   "ProductMerchandising": {
+    "type": "object",
+    "description": "The merchandising half of a product PAGE. Both keys are always present and always arrays -- an unmerchandised product answers `[]`, never null and never a missing key.",
+    "required": [
+     "gallery",
+     "sections"
+    ],
+    "properties": {
      "gallery": {
       "type": "array",
       "items": {
@@ -1070,9 +1069,20 @@
       "items": {
        "$ref": "#/components/schemas/ProductContentSection"
       },
-      "description": "Ordered content sections. Empty when none is configured. Always present on BOTH product branches."
+      "description": "Ordered content sections. Empty when none is configured."
      }
     }
+   },
+   "ProductPageDetail": {
+    "description": "A simple product's PAGE: the resolved detail plus its merchandising.\n\nReturned by `get_item` for a simple Item. `resolve_variant` returns `ProductDetail` instead -- the same fields WITHOUT `gallery`/`sections` -- so a generated client must not expect merchandising back from a variant selection.",
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/ProductDetail"
+     },
+     {
+      "$ref": "#/components/schemas/ProductMerchandising"
+     }
+    ]
    },
    "ListingCard": {
     "type": "object",
@@ -1290,7 +1300,7 @@
     "required": [
      "message"
     ],
-    "description": "get_item answers ONE of two modes; discriminate on `data.is_template`.",
+    "description": "`get_item` answers ONE of two PAGE modes; discriminate on `data.is_template`. Both carry `gallery` and `sections`. Neither is the shape `resolve_variant` returns.",
     "properties": {
      "message": {
       "type": "object",
@@ -1301,7 +1311,7 @@
        "data": {
         "oneOf": [
          {
-          "$ref": "#/components/schemas/ProductDetail"
+          "$ref": "#/components/schemas/ProductPageDetail"
          },
          {
           "$ref": "#/components/schemas/VariantFamily"

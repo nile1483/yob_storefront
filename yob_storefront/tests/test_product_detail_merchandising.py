@@ -1157,14 +1157,40 @@ class PublishedContractCase(DetailBase):
 
         self.assertEqual(list(mapping), list(BLOCK_TYPES))
 
-    def test_both_product_branches_publish_both_arrays_as_required(self):
+    def test_both_product_PAGE_branches_require_both_arrays(self):
+        """Resolved through `allOf`, because a page composes detail + merchandising.
+
+        Phase 27B-1 moved merchandising out of `ProductDetail` -- which
+        `resolve_variant` returns -- into a shared fragment the two PAGE shapes
+        compose. So the guard has to follow composition rather than read a flat
+        `required`, or it would pass again the moment the two were merged.
+        """
+
         schemas = self.schemas()
 
-        for name in ("ProductDetail", "VariantFamily"):
-            required = schemas[name]["required"]
+        def required_of(name):
+            schema = schemas[name]
+            found = set(schema.get("required") or [])
+
+            for part in schema.get("allOf") or []:
+                if "$ref" in part:
+                    found |= required_of(part["$ref"].rsplit("/", 1)[-1])
+                else:
+                    found |= set(part.get("required") or [])
+
+            return found
+
+        for name in ("ProductPageDetail", "VariantFamily"):
+            required = required_of(name)
 
             self.assertIn("gallery", required, f"{name} does not require gallery")
             self.assertIn("sections", required, f"{name} does not require sections")
+
+        # ...and the resolved-SKU schema must NOT, however it is composed.
+        resolved = required_of("ProductDetail")
+
+        self.assertNotIn("gallery", resolved)
+        self.assertNotIn("sections", resolved)
 
     def test_the_product_union_is_not_the_cms_union(self):
         schemas = self.schemas()
@@ -1185,6 +1211,192 @@ class PublishedContractCase(DetailBase):
 
         self.assertEqual(cb["x-block-always-present"],
                          ["type", "block_name", "section_style", "content_width"])
+
+
+# =========================================================
+# PAGE vs RESOLVED SKU  (Phase 27B-1)
+# =========================================================
+
+class PageVersusResolvedContractCase(DetailBase):
+    """A product PAGE and a resolved SKU are different shapes.
+
+    THE DEFECT THIS CLOSES
+    ----------------------
+    Phase 27B added `gallery`/`sections` as REQUIRED to `ProductDetail` -- but
+    `ProductDetail` is also what `resolve_variant` returns. One schema was doing
+    two jobs, so a strict generated client expected merchandising back from a
+    variant selection that deliberately never sends it. The runtime was right;
+    the contract was wrong.
+
+    These tests read the actual `$ref` / `allOf` structure rather than prose,
+    because prose is exactly what failed to catch it the first time.
+    """
+
+    def schemas(self):
+        import pathlib
+
+        path = (pathlib.Path(frappe.get_app_path("yob_storefront")).parent
+                / "frontend-api-handoff" / "openapi.json")
+
+        if not path.exists():
+            self.skipTest("no published OpenAPI document in this checkout")
+
+        return json.loads(path.read_text())
+
+    def resolved_variant_data(self):
+        import json as jsonlib
+
+        template, variants = self.make_family("_P27B1-RESOLVE")
+        self.set_gallery(template.name, [{"image": "/files/family.png"}])
+        self.make_section(template.name, title="Family",
+                          blocks=[{"block_type": "rich_text", "content": "<p>f</p>"}])
+
+        frappe.clear_cache()
+        response = inspect.unwrap(self.catalog.resolve_variant)(
+            auth_context={}, template=template.name,
+            attributes=jsonlib.dumps({"Colour": "Red", "Size": "Medium"}), qty="1")
+
+        self.assertNotIn("errors", response, response)
+        return response["data"]
+
+    # ------------------------------------------------------ schema structure
+
+    def test_the_resolved_detail_schema_does_not_require_merchandising(self):
+        detail = self.schemas()["components"]["schemas"]["ProductDetail"]
+
+        for key in ("gallery", "sections"):
+            self.assertNotIn(key, detail["required"],
+                             f"ProductDetail requires {key}; resolve_variant returns it not")
+            self.assertNotIn(key, detail["properties"],
+                             f"ProductDetail still declares {key}")
+
+    def test_the_page_schema_is_the_detail_plus_merchandising(self):
+        schemas = self.schemas()["components"]["schemas"]
+        page = schemas["ProductPageDetail"]
+
+        parts = [part["$ref"].rsplit("/", 1)[-1] for part in page["allOf"]]
+
+        self.assertEqual(parts, ["ProductDetail", "ProductMerchandising"])
+        self.assertEqual(schemas["ProductMerchandising"]["required"],
+                         ["gallery", "sections"])
+
+    def test_the_family_page_also_composes_merchandising(self):
+        family = self.schemas()["components"]["schemas"]["VariantFamily"]
+
+        refs = [part.get("$ref", "").rsplit("/", 1)[-1] for part in family["allOf"]]
+
+        self.assertIn("ProductMerchandising", refs,
+                      "a family page no longer requires merchandising")
+
+    def test_get_item_resolves_to_the_two_page_shapes(self):
+        schemas = self.schemas()["components"]["schemas"]
+        data = (schemas["ItemDetailResponse"]["properties"]["message"]
+                ["properties"]["data"])
+
+        branches = [b["$ref"].rsplit("/", 1)[-1] for b in data["oneOf"]]
+
+        self.assertEqual(branches, ["ProductPageDetail", "VariantFamily"])
+        self.assertNotIn("ProductDetail", branches,
+                         "get_item still points at the resolved-SKU schema")
+
+    def test_resolve_variant_resolves_to_the_base_detail(self):
+        spec = self.schemas()
+        schemas = spec["components"]["schemas"]
+
+        ref = (spec["paths"]["/api/method/yob_storefront.api.catalog.resolve_variant"]
+               ["get"]["responses"]["200"]["content"]["application/json"]["schema"])
+        wrapper = ref["$ref"].rsplit("/", 1)[-1]
+
+        self.assertEqual(wrapper, "ProductDetailResponse")
+
+        data = (schemas[wrapper]["properties"]["message"]["properties"]["data"])
+
+        self.assertEqual(data["$ref"].rsplit("/", 1)[-1], "ProductDetail",
+                         "resolve_variant points at a page schema")
+
+    def test_no_page_schema_leaks_into_the_resolve_variant_response(self):
+        spec = self.schemas()
+        wire = json.dumps(spec["paths"]
+                          ["/api/method/yob_storefront.api.catalog.resolve_variant"])
+
+        for page_schema in ("ProductPageDetail", "ProductMerchandising",
+                            "ProductGalleryImage", "ProductContentSection"):
+            self.assertNotIn(page_schema, wire,
+                             f"{page_schema} reached the resolve_variant contract")
+
+    # -------------------------------------------------- runtime matches schema
+
+    def test_the_runtime_resolved_sku_matches_the_base_detail_schema(self):
+        from yob_storefront.tests.test_variant_contract import (
+            MERCHANDISING_KEYS,
+            PRODUCT_DETAIL_KEYS,
+        )
+
+        data = self.resolved_variant_data()
+
+        self.assertEqual(set(data), PRODUCT_DETAIL_KEYS)
+        self.assertEqual(set(data) & MERCHANDISING_KEYS, set(),
+                         "resolve_variant returned merchandising")
+
+    def test_the_runtime_simple_page_matches_the_page_schema(self):
+        from yob_storefront.tests.test_variant_contract import (
+            MERCHANDISING_KEYS,
+            PRODUCT_PAGE_KEYS,
+        )
+
+        item = self.make_item("_P27B1-SIMPLE")
+        data = self.detail(item.custom_slug)
+
+        self.assertEqual(set(data), PRODUCT_PAGE_KEYS)
+        self.assertEqual(set(data) & MERCHANDISING_KEYS, MERCHANDISING_KEYS)
+
+    def test_the_runtime_family_page_carries_merchandising(self):
+        from yob_storefront.tests.test_variant_contract import MERCHANDISING_KEYS
+
+        template, _ = self.make_family("_P27B1-FAMPAGE")
+        data = self.detail(template.custom_slug)
+
+        self.assertEqual(set(data) & MERCHANDISING_KEYS, MERCHANDISING_KEYS)
+
+    def test_the_page_and_resolved_key_sets_stay_distinct(self):
+        """The 27B split must not be merged back together."""
+
+        from yob_storefront.tests.test_variant_contract import (
+            MERCHANDISING_KEYS,
+            PRODUCT_DETAIL_KEYS,
+            PRODUCT_PAGE_KEYS,
+        )
+
+        self.assertEqual(PRODUCT_PAGE_KEYS - PRODUCT_DETAIL_KEYS, MERCHANDISING_KEYS)
+        self.assertNotEqual(PRODUCT_PAGE_KEYS, PRODUCT_DETAIL_KEYS)
+
+    def test_the_resolve_variant_example_shows_no_merchandising(self):
+        spec = self.schemas()
+        content = (spec["paths"]
+                   ["/api/method/yob_storefront.api.catalog.resolve_variant"]["get"]
+                   ["responses"]["200"]["content"]["application/json"])
+
+        example = content.get("example")
+
+        if not example:
+            self.skipTest("no captured example for resolve_variant")
+
+        data = example.get("message", {}).get("data", {})
+
+        for key in ("gallery", "sections"):
+            self.assertNotIn(key, data,
+                             f"the resolve_variant example implies {key}")
+
+    def test_the_get_item_example_shows_merchandising(self):
+        spec = self.schemas()
+        content = (spec["paths"]["/api/method/yob_storefront.api.catalog.get_item"]
+                   ["get"]["responses"]["200"]["content"]["application/json"])
+
+        data = content["example"]["message"]["data"]
+
+        self.assertIn("gallery", data)
+        self.assertIn("sections", data)
+        self.assertTrue(data["gallery"], "the example shows an empty gallery")
 
 
 if __name__ == "__main__":

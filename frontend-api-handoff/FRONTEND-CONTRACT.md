@@ -377,10 +377,24 @@ key, accordion mode or layout metadata exists.
 width check is needed. A merchant who narrows a table keeps the wider data in the
 database but you only ever receive the current width.
 
-**Ownership.** Merchandising belongs to the public product: a simple Item's own,
-or the **template's** for a whole family. `resolve_variant` does **not** carry
-`gallery` or `sections` — selecting a size changes the SKU, price and stock, and
-must **not** reload or replace the gallery or the content.
+**Ownership, and the two schemas that express it.** Merchandising belongs to the
+public product: a simple Item's own, or the **template's** for a whole family.
+
+| Call | Schema | Merchandising |
+|---|---|---|
+| `get_item` (simple) | `ProductPageDetail` = `ProductDetail` + `ProductMerchandising` | **yes**, required |
+| `get_item` (family) | `VariantFamily` + `ProductMerchandising` | **yes**, required |
+| `resolve_variant` | `ProductDetail` | **no** — and a generated client must not expect it |
+
+A **product page** and a **resolved SKU** are deliberately different shapes.
+Selecting a size changes the SKU, price, UOM and stock; it must **not** reload or
+replace the gallery or the content, which is why `resolve_variant` returns the
+base detail without them.
+
+> Corrected in **3.9.1**. In 3.9.0 `ProductDetail` carried `gallery`/`sections`
+> as required *and* was the schema `resolve_variant` returns, so a strict client
+> generated from that document expected merchandising a variant selection never
+> sends. The runtime was always correct; only the modelling was wrong.
 
 **Safety.** `rich_text` is sanitised on save *and* on read; still render it
 through your own trusted-HTML policy. `video` is an http(s) **URL only** — never

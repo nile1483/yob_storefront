@@ -10,6 +10,39 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Product page and resolved SKU are separate schemas (OpenAPI 3.9.1)
+
+**Contract correction. No runtime behaviour changed** — `get_item` and
+`resolve_variant` return exactly what they returned in 3.9.0.
+
+**THE DEFECT** — 3.9.0 added `gallery` and `sections` as **required** to
+`ProductDetail`, which is also the schema `resolve_variant` returns. One schema
+was doing two jobs, so a client generated strictly from that document expected
+merchandising back from a variant selection that deliberately never sends it.
+
+**CORRECTED**
+
+```
+ProductDetail          resolved SKU detail        -- NO merchandising
+ProductMerchandising   { gallery, sections }      -- both required
+ProductPageDetail      allOf: ProductDetail + ProductMerchandising
+VariantFamily          allOf: family fields + ProductMerchandising
+```
+
+```
+get_item         -> oneOf [ ProductPageDetail, VariantFamily ]
+resolve_variant  -> ProductDetail
+```
+
+**FRONTEND ACTION** — regenerate from 3.9.1. If you hand-wrote a type for
+`resolve_variant` that expects `gallery`/`sections`, remove them; the runtime
+never sent them. Nothing about the product page changes: both `get_item` branches
+still require both arrays.
+
+The merchandising schemas themselves — `ProductGalleryImage`,
+`ProductContentSection`, `ProductContentBlock` and the six block variants — are
+untouched, as is `ProductSuggestion`.
+
 ## 0. Product Detail carries gallery and content (OpenAPI 3.9.0)
 
 **Additive.** No existing Product Detail field changed meaning; two required
