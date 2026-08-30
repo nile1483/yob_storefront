@@ -35,6 +35,9 @@ READ_ONLY = {
     # Phase 26A: header typeahead. Reads the catalogue and stores nothing; it
     # builds no Sales Order at all, not even a throwaway one.
     "catalog.get_product_suggestions",
+    # Phase 28A: the browse chips. Category metadata only -- two reads of
+    # `tabCategory`, no Item query, no pricing and no Sales Order at all.
+    "catalog.get_browse_categories",
     # Phase 25G: the same read, addressed by application route instead of slug.
     "cms.get_route_content",
     "payment.get_checkout_data", "payment_method.get_payment_methods",

@@ -354,8 +354,31 @@ class ListingQueryCase(ListingCase):
         for scope in ("collection", "all"):
             self.assertEqual(self.code_of(self.listing(scope_type=scope)), "unsupported_scope")
 
-    def test_missing_scope_is_not_all_products(self):
-        self.assertEqual(self.code_of(self.listing(scope_value=None)), "validation_failed")
+    def test_missing_scope_is_the_whole_catalogue(self):
+        """Inverted deliberately in Phase 28A; this asserted `validation_failed`.
+
+        An absent `scope_value` used to be a client bug because there was nowhere
+        to browse without a category. `/products` is that place, so the absence is
+        now the catalogue-wide scope -- see `CatalogWideCase` for what it returns.
+        """
+
+        inside = self.make_item("T22-SCOPELESS")
+
+        # `newest` so a freshly created fixture is on the first page: the test
+        # site's catalogue holds thousands of listable products, and under
+        # `name_asc` this one sorts far past page 1. See `CatalogWideCase`.
+        self.assertIn(inside, self.names(self.listing(scope_value=None, sort="newest")))
+
+    def test_reserved_scope_types_are_still_unreachable(self):
+        """Making the VALUE optional did not open the reserved scope TYPES.
+
+        `all` remains refused: catalogue-wide browsing is the absence of a
+        category, not a second addressing mode a client could guess at.
+        """
+
+        self.assertEqual(
+            self.code_of(self.listing(scope_type="all", scope_value=None)),
+            "unsupported_scope")
 
     def test_search_matches_item_name(self):
         red = self.make_item("T22-A", item_name="Red Cotton Shirt")
@@ -452,10 +475,24 @@ class ListingQueryCase(ListingCase):
 
         self.assertEqual(self.listing()["data"]["pagination"]["page_size"], 24)
         self.assertEqual(len(self.names(self.listing(page_size=1))), 1)
-        self.assertNotIn("errors", self.listing(page_size=48))
-        for bad in (0, -1, 49, 5000, "abc"):
+
+        # Default and maximum are the same number since Phase 28A.
+        self.assertNotIn("errors", self.listing(page_size=24))
+
+        # 48 was accepted before Phase 28A. It is refused now, and refused the
+        # same way every other out-of-range value always was -- never clamped to
+        # 24, because a silent clamp hides the client bug that produced it.
+        for bad in (0, -1, 25, 48, 49, 5000, "abc"):
             self.assertEqual(self.code_of(self.listing(page_size=bad)), "page_size_invalid",
                              f"page_size={bad} was not refused")
+
+    def test_the_page_size_ceiling_also_binds_the_catalogue_wide_browse(self):
+        """One rule, both scopes -- the ceiling is a property of `get_items`."""
+
+        self.assertNotIn("errors", self.listing(scope_value=None, page_size=24))
+        self.assertEqual(
+            self.code_of(self.listing(scope_value=None, page_size=25)),
+            "page_size_invalid")
 
 
 # =========================================================================
@@ -909,3 +946,370 @@ class CandidateScanContinuationCase(ListingCase):
         self.assertIsNotNone(cursor, "has_more=true with no cursor strands the client")
         self.assertLessEqual(scanned, svc.MAX_CANDIDATE_SCAN + svc.MAX_CANDIDATE_BATCH,
                              "the scan blew through its own work budget")
+
+
+# =========================================================================
+# CATALOGUE-WIDE BROWSE  (Phase 28A)
+# =========================================================================
+
+class CatalogWideCase(ListingCase):
+    """`get_items` with NO category: the listing behind Angular's `/products`.
+
+    THE POINT OF EVERY TEST HERE
+    ----------------------------
+    Dropping the category must change the SCOPE and nothing else. There is one
+    pipeline, so each rule already proven for a category page is re-proven with
+    the category removed -- a product must not be public catalogue-wide while
+    invisible in its own category, nor the reverse.
+
+    ISOLATION
+    ---------
+    The test site's catalogue holds thousands of listable Items, so a bare
+    catalogue-wide page is mostly seed data. Two devices keep these assertions
+    deterministic without weakening what they prove:
+
+    * a nonsense token in the fixtures' `item_name`, searched for -- the scope is
+      still catalogue-wide, the token only narrows what comes back;
+    * `sort="newest"`, which puts freshly created fixtures on the first page.
+
+    Neither touches the category predicate, which is what is actually under test.
+    """
+
+    TOKEN = "Zqbrowse"
+
+    def browse(self, **kw):
+        """Catalogue-wide: `scope_value` is simply absent."""
+        kw.setdefault("scope_value", None)
+        frappe.clear_cache()
+        return inspect.unwrap(self.api.get_items)(auth_context={}, **kw)
+
+    def tokened(self, **kw):
+        kw.setdefault("search", self.TOKEN)
+        return self.browse(**kw)
+
+    def token_item(self, code, category=None, **kw):
+        kw.setdefault("item_name", f"{self.TOKEN} {code}")
+        return self.make_item(code, category=category, **kw)
+
+    # ------------------------------------------------- the feature itself
+
+    def test_browsing_without_a_category_crosses_categories(self):
+        """THE requirement: products from more than one category in one answer."""
+
+        other = self.make_category("t28-other")
+        here = self.token_item("T28-IN-DEFAULT")
+        there = self.token_item("T28-IN-OTHER", category=other)
+
+        self.assertEqual(set(self.names(self.tokened())), {here, there})
+
+        # And the category scope is untouched: each still answers for itself only.
+        self.assertEqual(self.names(self.listing(search=self.TOKEN)), [here])
+        self.assertEqual(
+            self.names(self.listing(scope_value="t28-other", search=self.TOKEN)),
+            [there])
+
+    def test_a_bare_catalogue_page_needs_no_search(self):
+        """The token is a test device, not a requirement of the scope."""
+
+        fresh = self.token_item("T28-BARE")
+
+        self.assertIn(fresh, self.names(self.browse(sort="newest")))
+
+    def test_an_uncategorised_product_is_still_public(self):
+        """A product with no Storefront Category has nowhere to be listed today.
+
+        `/products` is the first place it can appear, and nothing in the
+        eligibility rules ever required a category -- only a slug and a price.
+        """
+
+        orphan = self.token_item("T28-NOCAT", category="")
+
+        self.assertIn(orphan, self.names(self.tokened()))
+
+    # ------------------------------------------------- inherited exclusions
+
+    def test_generated_variants_do_not_leak_into_the_catalogue(self):
+        """ONE card per family catalogue-wide too, never one per SKU."""
+
+        from erpnext.controllers.item_variant import create_variant
+
+        colour = "Colour"
+        if not frappe.db.exists("Item Attribute", colour):
+            self.skipTest("Item Attribute 'Colour' is not configured here")
+
+        values = frappe.get_all("Item Attribute Value", filters={"parent": colour},
+                                pluck="attribute_value")
+        if len(values) < 2:
+            self.skipTest("Colour has fewer than two values on this bench")
+
+        template = frappe.get_doc({
+            "doctype": "Item", "item_code": "T28-FAM",
+            "item_name": f"{self.TOKEN} Family", "item_group": self.item_group,
+            "stock_uom": self.uom, "is_stock_item": 0, "is_sales_item": 1,
+            "gst_hsn_code": self.hsn, "custom_slug": "t28-fam",
+            "custom_category": self.cat, "has_variants": 1,
+            "attributes": [{"attribute": colour}],
+        }).insert(ignore_permissions=True)
+
+        children = []
+        for value in values[:2]:
+            variant = create_variant(template.name, {colour: value})
+            variant.insert(ignore_permissions=True)
+            self.make_price(variant.name, 100)
+            children.append(variant.name)
+
+        names = self.names(self.tokened())
+
+        self.assertIn(template.name, names, "the family is missing catalogue-wide")
+        for child in children:
+            self.assertNotIn(child, names, "a generated variant was listed as a product")
+
+    def test_price_eligibility_is_unchanged_catalogue_wide(self):
+        """No Item Price and a zero Item Price both stay invisible."""
+
+        priced = self.token_item("T28-PRICED", price=100)
+        unpriced = self.token_item("T28-UNPRICED", price=None)
+        zero = self.token_item("T28-ZERO", price=0)
+
+        names = set(self.names(self.tokened()))
+
+        self.assertEqual(names, {priced})
+        self.assertNotIn(unpriced, names)
+        self.assertNotIn(zero, names)
+
+    def test_a_fixed_rate_rule_still_cannot_publish_an_unpriced_item(self):
+        """The Phase 22B rule, re-proven with the category removed."""
+
+        unpriced = self.token_item("T28-RULEONLY", price=None)
+        self.make_rule(unpriced, rate=999)
+
+        self.assertNotIn(unpriced, self.names(self.tokened()))
+
+    def test_public_listing_eligibility_is_unchanged_catalogue_wide(self):
+        """Disabled, non-selling, unrouted and end-of-life products stay out."""
+
+        visible = self.token_item("T28-OK")
+        disabled = self.token_item("T28-OFF", disabled=1)
+        not_selling = self.token_item("T28-NOSELL", is_sales_item=0)
+        unrouted = self.token_item("T28-NOSLUG", custom_slug="")
+        dead = self.token_item("T28-EOL", end_of_life=add_days(today(), -1))
+
+        names = set(self.names(self.tokened()))
+
+        self.assertEqual(names, {visible})
+        for excluded in (disabled, not_selling, unrouted, dead):
+            self.assertNotIn(excluded, names)
+
+    def test_another_customers_price_does_not_publish_a_product(self):
+        """Customer isolation is a property of the pipeline, not of the scope."""
+
+        other = frappe.get_doc({
+            "doctype": "Customer", "customer_name": "T28 Other Buyer",
+            "customer_type": "Company",
+            "customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
+            "territory": frappe.db.get_value("Territory", {"is_group": 0}, "name"),
+        }).insert(ignore_permissions=True)
+
+        theirs = self.token_item("T28-THEIRS", price=None)
+        self.make_price(theirs, 100, customer=other.name)
+
+        self.assertNotIn(theirs, self.names(self.tokened()))
+
+    # ------------------------------------------------- filters
+
+    def test_merchandising_filters_require_a_category(self):
+        """Which facets exist is a property of a category (Phase 25C).
+
+        Refused rather than ignored: silently dropping a selection would return a
+        wider result set than the buyer asked for and look like a backend bug.
+        """
+
+        self.assertEqual(
+            self.code_of(self.browse(storefront_filters='{"material":["steel"]}')),
+            "storefront_filter_context_required")
+
+    def test_an_empty_filter_selection_is_not_a_filter(self):
+        """An Angular page that always sends the parameter must not be refused."""
+
+        self.token_item("T28-EMPTYSEL")
+
+        for empty in (None, "", "{}", '{"material":[]}'):
+            self.assertNotIn("errors", self.browse(storefront_filters=empty),
+                             f"storefront_filters={empty!r} was wrongly refused")
+
+    # ------------------------------------------------- search
+
+    def test_search_matches_the_name_catalogue_wide(self):
+        wanted = self.token_item("T28-S-NAME", item_name=f"{self.TOKEN} Cotton Shirt")
+        self.token_item("T28-S-OTHER", item_name=f"{self.TOKEN} Wool Coat")
+
+        self.assertEqual(self.names(self.browse(search=f"{self.TOKEN} cotton")), [wanted])
+
+    def test_search_matches_the_item_code_catalogue_wide(self):
+        wanted = self.token_item("T28-ZZGLOBALCODE", item_name=f"{self.TOKEN} Plain")
+
+        self.assertEqual(self.names(self.browse(search="ZZGLOBALCODE")), [wanted])
+
+    def test_a_word_may_come_from_either_column_catalogue_wide(self):
+        """AND across words, OR across the two identity columns -- one predicate,
+        so `/products`, a category page and the header typeahead cannot disagree."""
+
+        both = self.token_item("T28-HEX10", item_name=f"{self.TOKEN} Hex Bolt")
+        self.token_item("T28-HEX99", item_name=f"{self.TOKEN} Washer")
+
+        self.assertEqual(self.names(self.browse(search=f"{self.TOKEN} hex 10")), [both])
+
+    def test_search_limits_still_apply(self):
+        self.assertEqual(self.code_of(self.browse(search="x" * 200)), "search_too_long")
+        self.assertEqual(self.code_of(self.browse(search="a b c d e f g h")),
+                         "search_too_long")
+
+    # ------------------------------------------------- pagination
+
+    def paged(self, page_size=2, **kw):
+        """Walk the whole token-narrowed catalogue, page by page."""
+
+        seen = []
+        pages = 0
+        cursor = None
+
+        while True:
+            response = self.tokened(page_size=page_size, cursor=cursor, **kw)
+            self.assertNotIn("errors", response, response)
+            pagination = response["data"]["pagination"]
+
+            seen.extend(row["name"] for row in response["data"]["items"])
+            pages += 1
+
+            if not pagination["has_more"]:
+                self.assertIsNone(pagination["next_cursor"],
+                                  "a terminal page still handed back a cursor")
+                return seen, pages
+
+            cursor = pagination["next_cursor"]
+            self.assertIsNotNone(cursor, "has_more=true with no cursor strands the client")
+            self.assertLess(pages, 20, "pagination did not terminate")
+
+    def test_pages_cover_every_product_exactly_once(self):
+        made = sorted(self.token_item(f"T28-PG{i}", item_name=f"{self.TOKEN} P{i}")
+                      for i in range(5))
+
+        seen, pages = self.paged(page_size=2)
+
+        self.assertEqual(sorted(seen), made, "a product was duplicated or skipped")
+        self.assertEqual(len(seen), len(set(seen)), "a product appeared on two pages")
+        self.assertEqual(pages, 3, "5 items at page_size=2 is three pages")
+
+    def test_the_first_page_is_bounded_by_page_size(self):
+        for i in range(5):
+            self.token_item(f"T28-FP{i}", item_name=f"{self.TOKEN} F{i}")
+
+        response = self.tokened(page_size=2)
+        pagination = response["data"]["pagination"]
+
+        self.assertEqual(len(response["data"]["items"]), 2)
+        self.assertEqual(pagination["returned_count"], 2)
+        self.assertEqual(pagination["page_size"], 2)
+        self.assertTrue(pagination["has_more"])
+
+    def test_an_exact_full_page_still_reports_the_end_honestly(self):
+        """`has_more` proves a further product survived the FULL pipeline."""
+
+        for i in range(2):
+            self.token_item(f"T28-EX{i}", item_name=f"{self.TOKEN} E{i}")
+
+        pagination = self.tokened(page_size=2)["data"]["pagination"]
+
+        self.assertFalse(pagination["has_more"])
+        self.assertIsNone(pagination["next_cursor"])
+
+    def test_ineligible_products_between_valid_ones_do_not_corrupt_paging(self):
+        made = []
+        for i in range(4):
+            made.append(self.token_item(f"T28-MIX-OK{i}", item_name=f"{self.TOKEN} M{i}a"))
+            self.token_item(f"T28-MIX-NO{i}", item_name=f"{self.TOKEN} M{i}b", price=None)
+
+        seen, _pages = self.paged(page_size=2)
+
+        self.assertEqual(sorted(seen), sorted(made))
+
+    def test_paging_holds_for_every_sort(self):
+        made = sorted(self.token_item(f"T28-SORT{i}", item_name=f"{self.TOKEN} S{i}")
+                      for i in range(5))
+
+        for sort in ("name_asc", "name_desc", "newest"):
+            seen, _pages = self.paged(page_size=2, sort=sort)
+            self.assertEqual(sorted(seen), made, f"{sort} duplicated or skipped a product")
+
+    # ------------------------------------------------- cursor binding
+
+    def test_a_catalogue_cursor_cannot_be_replayed_inside_a_category(self):
+        """The scope joins the cursor binding, so the two cannot be crossed.
+
+        Resuming a category page from a catalogue-wide keyset position would
+        silently return a nonsense page rather than an error.
+        """
+
+        for i in range(3):
+            self.token_item(f"T28-BIND{i}", item_name=f"{self.TOKEN} B{i}")
+
+        cursor = self.tokened(page_size=1)["data"]["pagination"]["next_cursor"]
+        self.assertIsNotNone(cursor)
+
+        self.assertEqual(
+            self.code_of(self.listing(search=self.TOKEN, page_size=1, cursor=cursor)),
+            "cursor_invalid")
+
+    def test_a_category_cursor_cannot_be_replayed_catalogue_wide(self):
+        for i in range(3):
+            self.token_item(f"T28-BIND2-{i}", item_name=f"{self.TOKEN} C{i}")
+
+        cursor = self.listing(search=self.TOKEN,
+                              page_size=1)["data"]["pagination"]["next_cursor"]
+        self.assertIsNotNone(cursor)
+
+        self.assertEqual(
+            self.code_of(self.tokened(page_size=1, cursor=cursor)), "cursor_invalid")
+
+    def test_a_malformed_cursor_is_still_a_clean_validation_error(self):
+        for bad in ("not-base64!!", "eyJ2IjoxfQ", "x" * 600):
+            response = self.browse(cursor=bad)
+            self.assertEqual(self.code_of(response), "cursor_invalid",
+                             f"cursor={bad!r} was not refused cleanly")
+            self.assertNotIn("traceback", str(response).lower())
+
+    # ------------------------------------------------- shape and cost
+
+    def test_the_response_shape_is_identical_to_a_category_page(self):
+        """Angular renders one ListingCard. A scope must not change the contract."""
+
+        self.token_item("T28-SHAPE")
+
+        catalogue = self.tokened()["data"]
+        scoped = self.listing(search=self.TOKEN)["data"]
+
+        self.assertEqual(set(catalogue), set(scoped))
+        self.assertEqual(set(catalogue["pagination"]), set(scoped["pagination"]))
+        self.assertEqual(set(catalogue["query"]), set(scoped["query"]))
+        self.assertEqual(set(catalogue["items"][0]), set(scoped["items"][0]))
+
+        # The echoed query states the scope truthfully rather than inventing one.
+        self.assertIsNone(catalogue["query"]["scope_value"])
+
+    def test_a_catalogue_page_prices_only_its_page(self):
+        """Dropping the category must not drop the Phase 22B work bound."""
+
+        from yob_storefront.services import pricing_service
+
+        for i in range(6):
+            self.token_item(f"T28-COST{i}", item_name=f"{self.TOKEN} K{i}")
+
+        calls = []
+        real = pricing_service.get_item_pricing
+        with patch.object(pricing_service, "get_item_pricing",
+                          side_effect=lambda *a, **k: (calls.append(k.get("item_code")),
+                                                       real(*a, **k))[1]):
+            self.tokened(page_size=2)
+
+        self.assertLessEqual(len(calls), 3,
+                             f"a page of 2 priced {len(calls)} products: {calls}")

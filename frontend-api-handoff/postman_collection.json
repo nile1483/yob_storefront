@@ -254,6 +254,31 @@
      }
     },
     {
+     "name": "[AUTH] get_browse_categories",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_browse_categories",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.catalog.get_browse_categories"
+       ],
+       "query": []
+      },
+      "description": "AUTH\n\nEvery enabled, LISTABLE Storefront Category, FLAT, at every depth -- the chip row for /products. Metadata only: no items, prices or stock.\n\nEvery row is a valid get_items?scope_value= target: disabled, unslugged and GROUP categories are all withheld, so a chip cannot fail with category_not_listable. There is no is_group field, because every row is listable by construction.\n\nExcluding groups does not flatten the tree -- a listable category at any depth is returned -- and no aggregation is implied. Ordered by level, then display_order, then label. There is no All category: All is client state, and selecting it means calling get_items with no scope_value."
+     }
+    },
+    {
      "name": "[AUTH] get_category",
      "request": {
       "method": "GET",
@@ -351,7 +376,41 @@
         }
        ]
       },
-      "description": "AUTH\n\nOne card per simple Item and one per variant FAMILY -- never one per variant. Read `price_state`: `priced` has money, `select_options` is a family and every monetary field is null."
+      "description": "AUTH\n\nOne card per simple Item and one per variant FAMILY -- never one per variant. Read `price_state`: `priced` has money, `select_options` is a family and every monetary field is null.\n\npage_size is 1..24 since OpenAPI 3.10.0 (it was 1..48) and out of range is refused, not clamped. Ask for more with the cursor."
+     }
+    },
+    {
+     "name": "[AUTH] get_items (whole catalogue)",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/yob_storefront.api.catalog.get_items?page_size=24&sort=name_asc",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "yob_storefront.api.catalog.get_items"
+       ],
+       "query": [
+        {
+         "key": "page_size",
+         "value": "24"
+        },
+        {
+         "key": "sort",
+         "value": "name_asc"
+        }
+       ]
+      },
+      "description": "AUTH\n\nNo scope_value: the whole public catalogue -- the /products scope (OpenAPI 3.10.0). Identical card shape, eligibility, sort and cursor as a category page; query.scope_value comes back null.\n\nstorefront_filters is refused here with storefront_filter_context_required: facets are a property of a category. The scope is part of the cursor binding, so a catalogue cursor replayed against a category answers cursor_invalid."
      }
     },
     {

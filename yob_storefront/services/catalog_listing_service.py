@@ -44,8 +44,13 @@ from frappe.utils import cint, flt, today
 MAX_CURSOR_BYTES = 512
 CURSOR_VERSION = 1
 
+# One page is one screenful and nothing more. Default and maximum are deliberately
+# the SAME number (Phase 28A): a listing page is a fixed unit of work, and the only
+# way to see more products is Load More, which is bounded, cursor-positioned and
+# resumable. Letting a client ask for a bigger page was a knob nothing used and a
+# straight multiplier on Stage-3 Sales Order pricing.
 DEFAULT_PAGE_SIZE = 24
-MAX_PAGE_SIZE = 48
+MAX_PAGE_SIZE = 24
 MIN_PAGE_SIZE = 1
 
 MAX_SEARCH_LENGTH = 100
@@ -626,6 +631,12 @@ def list_items(ctx, category, terms, sort, page_size, after_keys, scope_type, sc
                selection=None):
     """Run the pipeline until the page is filled, the budget is spent, or candidates
     are exhausted -- and report truthfully which of the three happened.
+
+    `category` may be **None**, which browses the whole public catalogue instead of
+    one category (Phase 28A). That is a change of SCOPE and nothing else: the same
+    Stage-1 predicate, the same Stage-2 price eligibility, the same Stage-3 pricing,
+    the same sort, the same cursor. There is deliberately no second pipeline, so a
+    product cannot be public on `/products` and invisible in its own category.
 
     Fills `page_size + 1`. The extra row establishes `has_more` by proving a further
     Item survives the FULL pipeline -- Stage 2 and Stage 3 -- rather than merely

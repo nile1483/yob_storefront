@@ -300,6 +300,103 @@ class MenuRuntimeCase(RuntimeBase):
         self.assertTrue(destination["external"])
         self.assertTrue(destination["open_in_new_tab"])
 
+    # ------------------------------------------------- Phase 28A internal routes
+
+    def test_an_internal_route_projects_as_an_in_app_link(self):
+        """The defect this fixes: `validate_destination` has accepted a
+        single-leading-slash route since Phase 25B, but the projector demanded a
+        scheme AND a netloc -- so a route a merchant had legitimately saved
+        projected as None and the menu item silently disappeared.
+        """
+
+        menu = self.make_menu()
+        self.make_node(menu.name, "All Products", "External URL",
+                       external_url="/products")
+
+        destination = self.data(self.menu("r25-main"))["items"][0]["destination"]
+
+        self.assertIsNotNone(destination, "the menu item vanished at runtime")
+        self.assertEqual(destination["type"], "external_url")
+        self.assertEqual(destination["target"], "/products")
+        self.assertEqual(destination["href"], "/products")
+        self.assertFalse(destination["external"],
+                         "an in-app route must not be flagged as leaving the site")
+
+    def test_the_internal_route_rule_is_generic_not_products_specific(self):
+        """Nothing here knows what `/products` means -- any safe route projects."""
+
+        menu = self.make_menu()
+        for index, route in enumerate(
+                ("/account", "/orders", "/catalog/power-tools", "/products?sort=newest")):
+            self.make_node(menu.name, f"R{index}", "External URL", external_url=route)
+
+        items = self.data(self.menu("r25-main"))["items"]
+
+        self.assertEqual(len(items), 4, "a valid internal route was dropped")
+
+        for item in items:
+            self.assertFalse(item["destination"]["external"])
+            self.assertEqual(item["destination"]["href"], item["destination"]["target"])
+
+    def test_an_absolute_url_is_still_external(self):
+        """The correction must not turn real outbound links into in-app routes."""
+
+        menu = self.make_menu()
+        self.make_node(menu.name, "Blog", "External URL",
+                       external_url="https://example.com/blog")
+        self.make_node(menu.name, "Plain", "External URL",
+                       external_url="http://example.com/x")
+
+        for item in self.data(self.menu("r25-main"))["items"]:
+            self.assertTrue(item["destination"]["external"],
+                            f"{item['destination']['href']} lost its external flag")
+
+    def test_a_scheme_relative_target_is_still_refused(self):
+        """`//example.com` is read by a browser as scheme-relative and leaves the
+        storefront. It must not be mistaken for an internal route just because it
+        starts with a slash -- the save-time regex refuses it and so does this."""
+
+        from yob_storefront.services.storefront_destination import (
+            MENU_FIELDS,
+            project_destination,
+        )
+
+        for unsafe in ("//example.com", "///example.com", "//evil.test/path"):
+            stored = frappe._dict({"item_type": "External URL", "external_url": unsafe,
+                                   "open_in_new_tab": 0})
+
+            self.assertIsNone(project_destination(stored, MENU_FIELDS),
+                              f"{unsafe!r} projected as a link")
+
+    def test_unsafe_targets_are_refused_exactly_as_before(self):
+        """Existing rejection behaviour is unchanged for everything non-route."""
+
+        from yob_storefront.services.storefront_destination import (
+            MENU_FIELDS,
+            project_destination,
+        )
+
+        for unsafe in ("javascript:alert(1)", "data:text/html,<script>", "vbscript:x",
+                       "file:///etc/passwd", "mailto:a@b.c", "not a url",
+                       "https://", "ftp://example.com/x"):
+            stored = frappe._dict({"item_type": "External URL", "external_url": unsafe,
+                                   "open_in_new_tab": 0})
+
+            self.assertIsNone(project_destination(stored, MENU_FIELDS),
+                              f"{unsafe!r} projected as a link")
+
+    def test_an_internal_route_still_honours_open_in_new_tab(self):
+        """The stored type is unchanged, so its own field keeps working."""
+
+        menu = self.make_menu()
+        self.make_node(menu.name, "Docs", "External URL", external_url="/pages/docs",
+                       open_in_new_tab=1)
+
+        destination = self.data(self.menu("r25-main"))["items"][0]["destination"]
+
+        self.assertTrue(destination["open_in_new_tab"])
+        self.assertFalse(destination["external"])
+
     def test_no_database_identity_leaks(self):
         menu = self.make_menu()
         # Name deliberately different from the slug, so "the docname must not
@@ -733,6 +830,77 @@ class FilteredListingCase(RuntimeBase):
         self.assertNotIn("errors", self.filtered({}))
         self.assertNotIn("errors", self.filtered({"material": []}))
 
+    # ------------------------------------------------- Phase 28A composition
+
+    def test_the_endpoint_refuses_a_selection_with_no_category(self):
+        """Reachable for the first time in Phase 28A, now that `scope_value` is
+        optional. Refused rather than ignored: silently dropping the selection
+        would return a WIDER page than the buyer asked for."""
+
+        self.catalogue()
+
+        response = self.listing(
+            scope_value=None,
+            storefront_filters=json.dumps({"material": ["steel"]}))
+
+        self.assertEqual(self.code_of(response), "storefront_filter_context_required")
+
+    def searchable(self, c):
+        """Three more products in the same category: steel/hex, steel/washer,
+        aluminium/hex. Only one is both steel AND a hex bolt."""
+
+        material = frappe.db.get_value("YOB Storefront Filter", {"filter_key": "material"})
+        steel = frappe.db.get_value(
+            "YOB Storefront Filter Value", {"value_key": "steel"}, "name")
+        aluminium = frappe.db.get_value(
+            "YOB Storefront Filter Value", {"value_key": "aluminium"}, "name")
+        item_set = frappe.db.get_value(
+            "Item", c.products["steel_black"], "custom_storefront_filter_set")
+
+        def product(code, name, value):
+            return self.make_item(
+                code, category=c.category.name, filter_set=item_set, item_name=name,
+                filters=[{"filter": material, "filter_value": value}]).name
+
+        return frappe._dict(
+            wanted=product("_R25-SRCH-OK", "Rivsun Hex Bolt", steel),
+            wrong_search=product("_R25-SRCH-NO", "Rivsun Washer", steel),
+            wrong_filter=product("_R25-SRCH-ALU", "Rivsun Hex Nut", aluminium),
+        )
+
+    def test_a_category_a_filter_and_a_search_compose(self):
+        """All three narrow the SAME query -- no `/products`-specific search path,
+        and no filter path that ignores the search."""
+
+        c = self.catalogue()
+        p = self.searchable(c)
+
+        names = self.names(self.filtered({"material": ["steel"]}, search="rivsun hex"))
+
+        self.assertEqual(names, {p.wanted})
+        self.assertNotIn(p.wrong_search, names, "the search was ignored")
+        self.assertNotIn(p.wrong_filter, names, "the filter was ignored")
+
+    def test_a_filtered_search_matches_the_item_code_too(self):
+        """The OR-across-columns rule survives composition with a filter."""
+
+        c = self.catalogue()
+        p = self.searchable(c)
+
+        names = self.names(self.filtered({"material": ["steel"]}, search="SRCH-OK"))
+
+        self.assertEqual(names, {p.wanted})
+
+    def test_a_category_and_a_search_without_filters(self):
+        c = self.catalogue()
+        p = self.searchable(c)
+
+        names = {row["name"] for row in self.data(
+            self.listing(scope_value="r25-listing", search="rivsun hex"))["items"]}
+
+        self.assertEqual(names, {p.wanted, p.wrong_filter},
+                         "dropping the filter must widen the page, not change it")
+
 
 class FilteredCursorCase(FilteredListingCase):
     """A cursor belongs to the query that produced it, filters included."""
@@ -971,6 +1139,38 @@ class PageRuntimeCase(RuntimeBase):
         for destination in found:
             self.assertEqual(destination, menu_destination,
                              "one surface projects destinations differently")
+
+    def test_an_internal_route_projects_identically_on_every_surface(self):
+        """Phase 28A changed the SHARED projector, so the fix must reach the CMS
+        surfaces too -- not only the menu it was found through."""
+
+        menu = self.make_menu()
+        self.make_node(menu.name, "Products", "External URL", external_url="/products")
+
+        banner = self.make_block("Image Banner", block_name="_R25 R1",
+                                 desktop_image="/files/b.png",
+                                 link_type="External URL",
+                                 link_external_url="/products")
+        carousel = self.make_block("Banner Carousel", block_name="_R25 R2", slides=[
+            {"desktop_image": "/files/s.png", "link_type": "External URL",
+             "link_external_url": "/products"}])
+        promo = self.make_block("Promo Grid", block_name="_R25 R3", cards_per_row="1",
+                                promo_cards=[{"desktop_image": "/files/c.png",
+                                              "link_type": "External URL",
+                                              "link_external_url": "/products"}])
+        self.make_page(slug="r25-route", blocks=[{"block": b.name}
+                                                 for b in (banner, carousel, promo)])
+
+        menu_destination = self.data(self.menu("r25-main"))["items"][0]["destination"]
+        blocks = self.data(self.page("r25-route"))["blocks"]
+
+        found = [menu_destination, blocks[0]["destination"],
+                 blocks[1]["slides"][0]["destination"], blocks[2]["cards"][0]["destination"]]
+
+        for destination in found:
+            self.assertIsNotNone(destination, "a surface dropped the internal route")
+            self.assertEqual(destination["href"], "/products")
+            self.assertFalse(destination["external"])
 
 
 class ProductGridRuntimeCase(RuntimeBase):

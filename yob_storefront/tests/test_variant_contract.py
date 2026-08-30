@@ -204,7 +204,7 @@ class ContractBase(unittest.TestCase):
         frappe.clear_cache()
         with patch.object(self.catalog, "get_storefront_customer", return_value=self.customer):
             response = inspect.unwrap(self.catalog.get_items)(
-                auth_context={}, scope_type="category", scope_value=slug, page_size="48")
+                auth_context={}, scope_type="category", scope_value=slug, page_size="24")
         self.assertNotIn("errors", response, response)
         return {row["name"]: row for row in response["data"]["items"]}
 

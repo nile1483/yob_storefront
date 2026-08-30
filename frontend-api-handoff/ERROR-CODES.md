@@ -69,7 +69,7 @@ field named. None of them is a server fault.
 | `unsupported_scope` | `get_items` | `scope_type` other than `category`; `collection`/`all` are reserved, not broken; `field: "scope_type"` | validation |
 | `unsupported_filters` | `get_items` | `filters` was non-empty (or unparseable JSON); filters are not implemented and are never silently dropped; `field: "filters"` | validation |
 | `unsupported_sort` | `get_items` | `sort` other than `name_asc` / `name_desc` / `newest`; `field: "sort"` | validation |
-| `page_size_invalid` | `get_items` | `page_size` outside 1..48 — **refused, never clamped**, so a client bug is visible; `field: "page_size"` | validation |
+| `page_size_invalid` | `get_items` | `page_size` outside 1..24 — **refused, never clamped**, so a client bug is visible; `field: "page_size"`. The ceiling was 48 before OpenAPI 3.10.0 | validation |
 | `cursor_invalid` | `get_items` | the cursor is malformed, or belongs to a different scope/search/sort/customer/price list; request the first page again; `field: "cursor"` | validation |
 | `search_too_long` | `get_items` | the search string exceeds the allowed length; `field: "search"` | validation |
 | `category_not_listable` | `get_items` | the slug names a GROUP category, which holds sub-categories rather than products; call `get_categories` for its children; `field: "scope_value"` | validation |
@@ -81,7 +81,7 @@ field named. None of them is a server fault.
 | `storefront_filter_invalid` | `get_items` | `storefront_filters` was not a JSON object of `key -> [value keys]` (**422**) — a client bug | validation |
 | `storefront_filter_unknown` | `get_items` | the filter key is not exposed by this category, or is disabled (**422**) — your cached facet list is stale; re-fetch `get_category_filters` | validation |
 | `storefront_filter_value_unknown` | `get_items` | the value is not one of that filter's enabled values (**422**) — same remedy | validation |
-| `storefront_filter_context_required` | `get_items` | filters were sent without a category scope (**422**); merchandising facets only exist inside a category | validation |
+| `storefront_filter_context_required` | `get_items` | filters were sent without a category scope (**422**); merchandising facets only exist inside a category. Reachable since OpenAPI 3.10.0, when `scope_value` became optional | validation |
 
 Selections are never interpreted as database fields: an unknown key is refused,
 not queried.

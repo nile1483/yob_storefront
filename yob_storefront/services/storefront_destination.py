@@ -32,6 +32,12 @@ ROUTES
 `type` + `target` and a **null href**: the dynamic page route is `/pages/:slug`,
 and a client builds it from `target`. Storing that route here would put an SPA
 routing decision in the backend and make a route change a data migration.
+
+An `external_url` destination is NOT necessarily external. The field accepts a
+single-leading-slash internal route as well as an absolute http(s) URL, so the
+type answers *what was stored* and `external` answers *where it goes*: `false`
+for an in-app route the SPA router owns, `true` for a link that leaves the
+storefront. Switch on `external`, never on the type.
 """
 
 import frappe
@@ -155,21 +161,51 @@ def _product(doc, target, fields):
 
 
 def _external(doc, target, fields):
-    from yob_storefront.utils.storefront_content import ALLOWED_SCHEMES
+    """A link destination: an INTERNAL route, or an absolute http(s) URL.
+
+    The stored type is `External URL`, but the field has accepted an internal
+    route since Phase 25B -- `utils.storefront_content.validate_destination()`
+    takes either a single-leading-slash path or an absolute http(s) URL. This
+    projection used to demand a scheme AND a netloc, so a route a merchant had
+    legitimately saved projected as `None` and the menu item silently vanished.
+    Save and runtime now agree, which is all this is.
+
+    `external` is the field a client switches on: `false` means an in-app route
+    the SPA router owns, `true` means it leaves the storefront. The machine
+    `type` stays `external_url` because that is genuinely what is stored --
+    inventing a second type would make every existing consumer handle a new case
+    to gain nothing.
+
+    The save-time rules are re-applied here rather than trusted, exactly as
+    before: a value written before a rule existed, or through a direct database
+    edit, must never reach a browser as an href.
+    """
+
+    from yob_storefront.utils.storefront_content import ALLOWED_SCHEMES, INTERNAL_ROUTE
 
     from urllib.parse import urlparse
 
+    new_tab_field = fields.get("new_tab")
+    new_tab = doc.get(new_tab_field) if new_tab_field else False
+
+    if target.startswith("/"):
+        # `INTERNAL_ROUTE` carries the guard that matters: its `(?!/)` refuses
+        # `//example.com`, which a browser reads as scheme-relative and would
+        # follow straight off the storefront. Re-checked here, not assumed.
+        if not INTERNAL_ROUTE.fullmatch(target):
+            return None
+
+        return _link("external_url", target=target, href=target, external=False,
+                     new_tab=new_tab)
+
     parsed = urlparse(target)
 
-    # Validated on save, re-checked here: a value written before this rule existed,
-    # or through a direct database edit, must never reach a browser as an href.
     if parsed.scheme.lower() not in ALLOWED_SCHEMES or not parsed.netloc:
+        # Covers javascript:, data:, vbscript:, file:, mailto: and bare text.
         return None
 
-    new_tab_field = fields.get("new_tab")
-
     return _link("external_url", target=target, href=target, external=True,
-                 new_tab=doc.get(new_tab_field) if new_tab_field else False)
+                 new_tab=new_tab)
 
 
 RESOLVERS = {

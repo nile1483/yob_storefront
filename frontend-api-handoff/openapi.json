@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.9.1",
+  "version": "3.10.0",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -1414,7 +1414,8 @@
       "description": "ready-made route where one exists. **always null for `storefront_page`** -- the SPA route is `/pages/:slug`, built from `target` on the client."
      },
      "external": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "`true` leaves the storefront, `false` is an in-app route the SPA router owns. **Switch on this, never on `type`**: an `external_url` destination may hold a single-leading-slash internal route such as `/products`, which the merchant Menu has always accepted, and it projects with `external: false` and `href` equal to the route."
      },
      "open_in_new_tab": {
       "type": "boolean"
@@ -1554,6 +1555,87 @@
        },
        "notice": {
         "type": "string"
+       }
+      }
+     }
+    }
+   },
+   "BrowseCategory": {
+    "type": "object",
+    "description": "One enabled, listable Storefront Category as a browse chip. Every row is a valid `get_items?scope_value=` target. Metadata only -- no item, price or stock data is ever attached.",
+    "required": [
+     "name",
+     "category_name",
+     "slug",
+     "parent_category",
+     "display_order",
+     "level"
+    ],
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "docname; use `slug` for navigation"
+     },
+     "category_name": {
+      "type": "string",
+      "description": "the chip label"
+     },
+     "slug": {
+      "type": "string",
+      "description": "public identity; pass as `get_items?scope_value=`"
+     },
+     "parent_category": {
+      "type": "string",
+      "nullable": true,
+      "description": "parent DOCNAME, null for a root. May name a category that is NOT in this list -- a listable child of a group or of a disabled parent keeps its real parent. A grouping key, not a chip reference."
+     },
+     "display_order": {
+      "type": "integer",
+      "nullable": true
+     },
+     "level": {
+      "type": "integer",
+      "description": "depth; 0 for a root"
+     }
+    }
+   },
+   "BrowseCategoriesResponse": {
+    "type": "object",
+    "required": [
+     "message"
+    ],
+    "properties": {
+     "message": {
+      "type": "object",
+      "required": [
+       "data"
+      ],
+      "properties": {
+       "data": {
+        "type": "object",
+        "required": [
+         "categories"
+        ],
+        "properties": {
+         "categories": {
+          "type": "array",
+          "items": {
+           "$ref": "#/components/schemas/BrowseCategory"
+          },
+          "description": "Every enabled, slugged, LISTABLE category at every depth, ordered by level, then display_order, then label. Group categories are excluded."
+         }
+        }
+       },
+       "notice": {
+        "type": "string"
+       },
+       "meta": {
+        "type": "object",
+        "properties": {
+         "count": {
+          "type": "integer"
+         }
+        }
        }
       }
      }
@@ -5134,11 +5216,11 @@
      {
       "name": "scope_value",
       "in": "query",
-      "required": true,
+      "required": false,
       "schema": {
        "type": "string"
       },
-      "description": "the category slug"
+      "description": "the category slug. OPTIONAL: omit it to browse the whole public catalogue (Phase 28A). A group category is refused with `category_not_listable`."
      },
      {
       "name": "search",
@@ -5180,7 +5262,7 @@
        "type": "string",
        "default": "24"
       },
-      "description": "1..48; out of range is refused, not clamped"
+      "description": "1..24, default 24; out of range is refused, not clamped. The maximum was 48 before OpenAPI 3.10.0."
      },
      {
       "name": "cursor",
@@ -5207,7 +5289,7 @@
       "schema": {
        "type": "string"
       },
-      "description": "JSON object keyed by filter/value KEYS from `get_category_filters`. Values within one filter are OR-ed; different filters are AND-ed. A selection, never query grammar -- unknown keys are refused, not queried -- and it requires a category scope.",
+      "description": "JSON object keyed by filter/value KEYS from `get_category_filters`. Values within one filter are OR-ed; different filters are AND-ed. A selection, never query grammar -- unknown keys are refused, not queried -- and it requires a category scope: sent without `scope_value` it answers `storefront_filter_context_required`.",
       "example": "{\"material\":[\"steel\",\"aluminium\"],\"finish\":[\"black\"]}"
      }
     ],
@@ -5296,7 +5378,7 @@
       }
      }
     },
-    "description": "**AUTHENTICATED STOREFRONT**\n\nONE card per simple Item and ONE per variant FAMILY -- never one per variant. Every card carries `has_variants` and `price_state`:\n\n* `price_state = \"priced\"` -- a simple Item; monetary fields populated.\n* `price_state = \"select_options\"` -- a family; **every monetary field is null**. Render 'Select options'. No representative price is invented: ERPNext cannot price a template, and pricing every variant would make the page unbounded.\n\n**Merchandising filters (Phase 25C).** `storefront_filters` narrows the listing before any pricing happens, so a narrower selection costs FEWER pricing calls. The normalised selection is part of the cursor binding: a cursor issued for one selection answers `cursor_invalid` if replayed against another. Value order and duplicates do not change the query. `filters` remains reserved and still answers `unsupported_filters`."
+    "description": "**AUTHENTICATED STOREFRONT**\n\nONE card per simple Item and ONE per variant FAMILY -- never one per variant. Every card carries `has_variants` and `price_state`:\n\n* `price_state = \"priced\"` -- a simple Item; monetary fields populated.\n* `price_state = \"select_options\"` -- a family; **every monetary field is null**. Render 'Select options'. No representative price is invented: ERPNext cannot price a template, and pricing every variant would make the page unbounded.\n\n**Merchandising filters (Phase 25C).** `storefront_filters` narrows the listing before any pricing happens, so a narrower selection costs FEWER pricing calls. The normalised selection is part of the cursor binding: a cursor issued for one selection answers `cursor_invalid` if replayed against another. Value order and duplicates do not change the query. `filters` remains reserved and still answers `unsupported_filters`.\n\n**Browsing without a category (Phase 28A).** `scope_value` is OPTIONAL. Omit it and the listing browses the whole public catalogue -- the scope behind the `/products` page -- instead of one category. Only the SCOPE changes: the same eligibility, the same pricing, the same sort, the same cursor, the same response shape, so a product cannot be public catalogue-wide and invisible on its own category page. `scope_type` is unaffected; `all` and `collection` remain reserved and still answer `unsupported_scope`.\n\nMerchandising filters are NOT available catalogue-wide -- which facets exist is a property of a category -- so a `storefront_filters` selection sent without `scope_value` answers `storefront_filter_context_required`. The scope is part of the cursor binding: a catalogue-wide cursor replayed against a category answers `cursor_invalid`, and vice versa."
    }
   },
   "/api/method/yob_storefront.api.catalog.get_product_suggestions": {
@@ -5589,6 +5671,44 @@
      },
      "4XX": {
       "description": "`category_not_found` (404), `category_not_listable` (422 -- a group category).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/method/yob_storefront.api.catalog.get_browse_categories": {
+   "get": {
+    "summary": "get_browse_categories",
+    "operationId": "yob_storefront.api.catalog.get_browse_categories",
+    "tags": [
+     "catalog"
+    ],
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "description": "**AUTHENTICATED STOREFRONT**\n\nEvery enabled, LISTABLE Storefront Category, FLAT, at every depth -- the category chips for the catalogue-wide `/products` browse.\n\n**Every row is a valid `get_items?scope_value=` target.** That is the contract: a chip published here will not answer `category_not_listable` when a buyer clicks it. Three exclusions, the same three the listing applies -- disabled, no slug, and `is_group = 1`.\n\nExcluding groups does not narrow the tree to one level: a listable category at depth 1, 2 or 3 is published whatever its ancestors are. Only the non-listable nodes drop out. No aggregation is implied -- a group is never republished as a chip listing its descendants, because `get_items` has no descendant recursion.\n\n`get_categories` answers one level at a time because it serves tree navigation; drawing a chip row from it would take one request per node. This is the flat shape, and it is metadata ONLY: no items, no prices, no stock, no listing pipeline.\n\n`slug` is the identity to pass back as `get_items?scope_value=`. `level` is depth, 0 for a root, counted over the full taxonomy including the groups and disabled ancestors that are not themselves published. `parent_category` is the parent's docname, `null` for a root, and may name a category absent from this list.\n\nThere is no `is_group` field: every row is listable by construction. There is no synthetic `All` chip either -- catalogue-wide browsing is the ABSENCE of `scope_value`, not a category the merchant owns.",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Success envelope",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BrowseCategoriesResponse"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "`application_access_denied` (403).",
       "content": {
        "application/json": {
         "schema": {

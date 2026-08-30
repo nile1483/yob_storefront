@@ -10,6 +10,140 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. Catalogue-wide browsing, and a smaller page (OpenAPI 3.10.0)
+
+Three changes to `catalog.get_items`, plus one new endpoint. Additive except the
+page-size ceiling, which is called out below.
+
+### `scope_value` is now OPTIONAL — additive
+
+**OLD** — a listing always named a category. Omitting `scope_value` answered
+`validation_failed`.
+
+**CURRENT** — omit it and `get_items` browses the whole public catalogue. This is
+the scope behind the `/products` page.
+
+```
+GET …catalog.get_items                          -> the whole catalogue
+GET …catalog.get_items?scope_value=power-tools  -> that category only
+```
+
+Only the SCOPE changes. Same card shape, same eligibility, same pricing, same
+sort, same cursor, same `pagination` block, one card per family and never one per
+variant. `query.scope_value` echoes `null`.
+
+`scope_type` is untouched: `all` and `collection` remain reserved and still answer
+`unsupported_scope`. Catalogue-wide is the ABSENCE of `scope_value`, not a scope
+type.
+
+**FRONTEND ACTION** — none for existing category pages. For `/products`, call
+`get_items` with no `scope_value`, and note two rules:
+
+* `storefront_filters` without `scope_value` answers
+  `storefront_filter_context_required` — the selection is refused, not ignored,
+  because which facets exist is a property of a category. Hide the facet UI when
+  no category is selected.
+* the scope is part of the cursor binding, so moving between the catalogue and a
+  category means re-fetching from page one; a crossed cursor answers
+  `cursor_invalid`.
+
+### `page_size` maximum is 24 — **BREAKING for a client that sent 25..48**
+
+**OLD** — `page_size` accepted 1..48, default 24.
+
+**CURRENT** — `page_size` accepts 1..24, default 24. Out of range is still
+**refused, not clamped**: 48 now answers `page_size_invalid` (422) rather than
+returning 48 rows.
+
+A page is a fixed unit of work; more products come from the cursor, not from a
+bigger page. Every value the frontend actually sends today is 24 or less.
+
+**FRONTEND ACTION** — if any call hard-codes a `page_size` above 24, lower it.
+Nothing that omits `page_size` is affected.
+
+### Search semantics documented accurately — no behaviour change
+
+`search` has matched `item_name` **OR** `item_code` since 3.8.x (Phase 26A-1),
+with words ANDed and each word satisfiable by either column. The `get_items`
+parameter description had not said so. It does now. **No frontend action.**
+
+### `catalog.get_browse_categories()` — new endpoint
+
+Every enabled Storefront Category, **flat, at every depth**, for the `/products`
+chip row:
+
+```jsonc
+{"categories":[
+  {"name":"Power Tools","category_name":"Power Tools","slug":"power-tools",
+   "parent_category":null,"is_group":1,"display_order":1,"level":0},
+  {"name":"Drills","category_name":"Drills","slug":"drills",
+   "parent_category":"Power Tools","is_group":0,"display_order":1,"level":1}]}
+```
+
+`get_categories` still answers ONE level at a time and is unchanged; it serves
+tree navigation, where a buyer descends. Chips need the opposite, so this is a
+second shape rather than a change to the first.
+
+Metadata only — no items, prices, stock or listing work. Ordered by `level`, then
+`display_order`, then label.
+
+**Every row is a valid `get_items?scope_value=` target**, so a chip can be
+rendered without checking anything first. Three kinds of category are withheld:
+disabled, no slug, and **group** categories (`is_group = 1`), which hold
+sub-categories rather than products and which `get_items` refuses with
+`category_not_listable`.
+
+There is no `is_group` field in the payload — every row is listable by
+construction, so it could only ever be `0`.
+
+**FRONTEND ACTION** — four rules:
+
+* render any returned row as a chip; none of them can fail with
+  `category_not_listable`.
+* excluding groups does **not** flatten the tree to one level. A listable
+  category at depth 1, 2 or 3 is still returned whatever its ancestors are, and
+  `level` counts the full taxonomy including the groups that are not published.
+  No aggregation is implied: a group is never returned as a chip listing its
+  subtree, because `get_items` has no descendant recursion.
+* `parent_category` may name a category that is **not** in this list — a listable
+  child of a group keeps its real parent. It is a grouping key, not a chip
+  reference.
+* there is **no `All` category**. "All" is your own UI state, and selecting it
+  means calling `get_items` with no `scope_value`. A disabled category never
+  appears; an enabled child of a disabled parent still does.
+
+### An `external_url` destination may be an INTERNAL route — bug fix
+
+**No contract field changed.** `Destination` has always carried `external`; what
+changed is that it is now correct for a case that previously produced `null`.
+
+**OLD** — the merchant Menu accepted a single-leading-slash route (`/products`,
+`/account`) in an `External URL` destination and saved it happily, but the runtime
+projector demanded a scheme **and** a host. A saved route therefore projected as
+`null` and **the menu item silently disappeared** from `cms.get_menu`.
+
+**CURRENT** — a route projects properly:
+
+```
+/products              -> {type:"external_url", href:"/products", external:false}
+https://example.com/x  -> {type:"external_url", href:"https://…",  external:true}
+//example.com          -> null   (scheme-relative; unchanged)
+javascript:…, data:…   -> null   (unchanged)
+```
+
+**FRONTEND ACTION** — **switch on `external`, not on `type`.** If your link
+renderer treats `type === "external_url"` as "leaves the site" and builds a plain
+anchor, an in-app route will do a full page load instead of a router navigation.
+Use the SPA router when `external` is `false`.
+
+This applies to **every destination surface** — menu items, image banners,
+carousel slides and promo cards — because they share one projector. Nothing else
+about them changed, and no other destination type is affected.
+
+Unchanged in 3.10.0: `ProductDetail`, `ProductMerchandising`, `ProductPageDetail`,
+`VariantFamily`, `resolve_variant`, `ProductSuggestion`, the ListingCard shape and
+every CMS schema.
+
 ## 0. Product page and resolved SKU are separate schemas (OpenAPI 3.9.1)
 
 **Contract correction. No runtime behaviour changed** — `get_item` and

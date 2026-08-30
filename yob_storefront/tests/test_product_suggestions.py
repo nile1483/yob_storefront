@@ -537,7 +537,7 @@ class ParityCase(SuggestionBase):
         frappe.clear_cache()
         response = inspect.unwrap(self.catalog.get_items)(
             auth_context={}, scope_type="category", scope_value=self.category.slug,
-            search=search, page_size="48")
+            search=search, page_size="24")
         self.assertNotIn("errors", response, response)
         return {row["name"] for row in response["data"]["items"]}
 

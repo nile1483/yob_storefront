@@ -58,6 +58,7 @@ No body. Requires CSRF.
 | `catalog.get_item` | GET | `slug`, `qty` (default 1) |
 | `catalog.resolve_variant` | GET | `template`, `attributes` (JSON object), `qty` (default 1) |
 | `catalog.get_category_filters` | GET | `scope_value` (category slug) |
+| `catalog.get_browse_categories` | GET | — |
 | `catalog.get_product_suggestions` | GET | `search` |
 | `cms.get_menu` | GET | `menu_key` |
 | `cms.get_page` | GET | `slug` |
@@ -110,6 +111,14 @@ slides and promo cards all use the identical shape. `type` is one of `home`,
 every type except **`storefront_page`, which is always `null`** — the dynamic page
 route is `/pages/:slug`, so build `/pages/${target}` on the client. The backend
 stores no route by design.
+
+**Switch on `external`, never on `type`.** An `external_url` destination is not
+necessarily external: the merchant Menu has always accepted a single-leading-slash
+internal route (`/products`, `/account`) as well as an absolute `http(s)` URL, and
+a route projects with `external: false` and `href` equal to the route — use the
+SPA router for it. Only `external: true` should become a plain anchor.
+Scheme-relative (`//example.com`) and unsafe targets project as `null`, exactly as
+before.
 
 **`catalog.get_category_filters(scope_value)`** returns the facets for a category:
 
@@ -485,6 +494,73 @@ unit** — price per Strip and availability in Nos are two different facts. It i
 **`null` must never be shown as "out of stock".** `warehouse` is returned for
 transparency only; it is server-resolved per transaction and the buyer cannot
 choose or send one.
+
+**Browsing the whole catalogue (OpenAPI 3.10.0).** `scope_value` is **optional**.
+Omit it and `catalog.get_items` lists every eligible public product instead of one
+category — the `/products` scope. Nothing else changes: same card shape, same
+eligibility, same sort, same cursor, same `pagination` block. `query.scope_value`
+comes back `null`, which is the honest echo of "no category".
+
+```
+GET …catalog.get_items                       -> the whole catalogue
+GET …catalog.get_items?scope_value=power-tools  -> that category only
+```
+
+Two rules to code against:
+
+* **Filters need a category.** Which facets exist is a property of a category, so
+  sending `storefront_filters` without `scope_value` answers
+  `storefront_filter_context_required` — it is not silently ignored. Hide the
+  facet UI when no category is selected.
+* **The scope is part of the cursor.** Re-fetch from page one when the buyer
+  moves between the catalogue and a category; a crossed cursor answers
+  `cursor_invalid`.
+
+`scope_type` is unchanged — `all` and `collection` are still reserved and still
+answer `unsupported_scope`. Catalogue-wide browsing is the ABSENCE of
+`scope_value`, not a scope type.
+
+**`page_size` maximum is now 24** (OpenAPI 3.10.0; it was 48). Default is also 24,
+and out-of-range is still **refused, not clamped**. Ask for more products with the
+cursor, not with a bigger page.
+
+**`catalog.get_browse_categories()`** returns every enabled, **listable** category,
+**flat, at every depth** — the chip row for `/products`:
+
+```jsonc
+{"categories":[
+  {"name":"Drills","category_name":"Drills","slug":"drills",
+   "parent_category":"Power Tools","display_order":1,"level":1},
+  {"name":"Sanders","category_name":"Sanders","slug":"sanders",
+   "parent_category":"Power Tools","display_order":2,"level":1}]}
+```
+
+Use it instead of walking `get_categories` one level at a time. Metadata only — no
+items, prices or stock. Ordered by `level`, then `display_order`, then label.
+
+**Every row is a valid `get_items?scope_value=` target.** You can render any of
+them as a chip without checking anything first: none of them will answer
+`category_not_listable`. Three kinds of category are withheld — disabled, no
+slug, and **group categories** (`is_group = 1`), which hold sub-categories rather
+than products.
+
+There is no `is_group` field, because every row is listable by construction.
+
+**Excluding groups does not flatten the tree to one level.** A listable category
+at depth 1, 2 or 3 is still returned whatever its ancestors are; only the
+non-listable nodes drop out. And no aggregation is implied — a group is never
+returned as a chip that lists its subtree, because `get_items` scopes to exactly
+one category with no descendant recursion.
+
+**`parent_category` may name a category that is not in this list** — a listable
+child of a group keeps its real parent, which is a grouping key rather than a
+chip reference. `level` likewise counts the full taxonomy, groups and disabled
+ancestors included.
+
+**There is no `All` category.** The "All" chip is your own UI state, and selecting
+it means calling `get_items` with no `scope_value`. A disabled category never
+appears; an enabled child of a disabled parent still does, and its `level` still
+counts that parent.
 
 **Category object:** `name`, `category_name`, `slug`, `parent_category`,
 `display_order`, `thumbnail`, `banner`, `meta_title`, `meta_description`.

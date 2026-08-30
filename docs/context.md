@@ -319,16 +319,28 @@ Two ERPNext guards differ and both are mirrored rather than tidied:
 
 * scope: `scope_type=category` only; `collection`/`all` answer `unsupported_scope`.
   A group category answers `category_not_listable` -- no descendant recursion.
+  `scope_value` is OPTIONAL since Phase 28A: omitted, the listing browses the whole
+  public catalogue (the `/products` scope). It is the ABSENCE of a category, not
+  the reserved `all` scope type, and it changes nothing but the scope -- one
+  pipeline, so a product cannot be public catalogue-wide and invisible in its own
+  category.
 * search: `item_name` **OR** `item_code`, whitespace-split, **AND** across words,
   `%`/`_` escaped. One shared predicate, so the listing and the header typeahead
   can never describe different product universes (Phase 26A-1).
 * sort: `name_asc` (default) | `name_desc` | `newest`, each with the Item `name` as
   tiebreak. Never `modified` (it reshuffles on edit and breaks the cursor), never price.
 * filters: must be absent or empty; anything else answers `unsupported_filters`.
-* page_size: 1..48, default 24; out-of-range is refused, not clamped.
+  `storefront_filters` requires a category and answers
+  `storefront_filter_context_required` without one -- which facets exist is a
+  property of a category (Phase 25C), and a global facet set would be a second
+  filtering system.
+* page_size: 1..24, default 24; out-of-range is refused, not clamped. Default and
+  maximum are the same number since Phase 28A -- a page is a fixed unit of work and
+  more products come from the cursor, never from a bigger page. It was 1..48.
 * pagination: opaque keyset cursor bound to scope + search + sort + customer +
   price list. It is never an authorization mechanism -- category and customer are
-  re-authorised on every request.
+  re-authorised on every request. The scope is part of that binding, so a
+  catalogue-wide cursor replayed against a category answers `cursor_invalid`.
 * response: `{items[], pagination{returned_count, page_size, has_more, next_cursor}}`.
   `has_more=true` means either another Item survived the FULL pipeline, or the scan
   budget was spent with candidates still unexamined -- never merely that another raw
@@ -337,6 +349,56 @@ Two ERPNext guards differ and both are mirrored rather than tidied:
   "Candidate scanning and continuation" above.
 
 ERPNext remains the final pricing authority; YOB only decides which items to price.
+
+### Browse category chips (Phase 28A)
+
+`catalog.get_browse_categories()` answers every enabled Storefront Category, FLAT,
+at every depth: `name`, `category_name`, `slug`, `parent_category`, `is_group`,
+`display_order`, `level`.
+
+It exists because `get_categories` answers ONE level at a time -- roots, or the
+children of one `parent_slug` -- which serves tree navigation but would take one
+request per node to draw a chip row. Neither shape fits the other, so the two sit
+beside each other rather than one changing.
+
+Metadata ONLY: no Item query, no price, no stock, no SellingContext, no listing
+pipeline. Two indexed reads over `tabCategory`.
+
+**Every row is a valid `get_items` target.** That is the contract: a chip a buyer
+can click must be a category the listing will answer for, so the three conditions
+`get_items` itself applies are applied here.
+
+* **`is_active = 1`.** Decided per category: a disabled PARENT does not
+  additionally hide an enabled child, because `get_categories`, `get_category`
+  and `get_items` all read the category's own flag and none of them cascades.
+* **a slug.** The public identity `get_items` resolves -- the same rule that keeps
+  unrouted Items out of the listing and unrouted categories out of a menu
+  destination.
+* **`is_group = 0`.** A group holds sub-categories, and `get_items` refuses one
+  with `category_not_listable`. Publishing it would hand a client a chip that
+  fails when clicked.
+
+Excluding groups does NOT narrow the answer to one level: a listable category at
+any depth is published whatever its ancestors are, and only the non-listable nodes
+drop out. **No aggregation is implied** -- a group is never republished as a chip
+that lists its descendants, because a category scope is exactly one category and
+`get_items` has no descendant recursion.
+
+`is_group` is deliberately NOT in the payload: every row is listable by
+construction, so the flag could only be 0, and publishing a constant invites a
+client to branch on a case that cannot occur. Adding it back if group chips ever
+gain a meaning is additive; removing it later would not be.
+
+`parent_category` may name a category that is not itself published -- a listable
+child of a group or of a disabled parent keeps its real parent. It is a grouping
+key, not a chip reference.
+
+`level` is computed over the FULL tree, groups and disabled ancestors included, so
+a depth is a fact about the taxonomy rather than about which nodes are listable
+today.
+
+**No synthetic `All`.** Catalogue-wide browsing is the absence of `scope_value`,
+not a category the merchant owns.
 
 ## Row-level tax on `pricing_rows` (Phase 23B-3)
 
@@ -845,7 +907,10 @@ last line of defence, not the only one.
 record; nobody types an Angular route, and route construction belongs to the
 Phase 25C projection, never to Desk JavaScript. A Product destination accepts a
 simple Item or a variant FAMILY with a slug and refuses a generated variant —
-Phase 24 family routing stays authoritative. External URLs are http(s) only.
+Phase 24 family routing stays authoritative. An External URL is either an
+absolute http(s) URL or a single-leading-slash INTERNAL route -- `validate_destination()`
+has accepted both since Phase 25B, and `//host` is refused because a browser reads
+it as scheme-relative and would leave the storefront.
 `utils.storefront_content.apply_destination()` is the single validator, used by
 menu items, banners, carousel slides and promo cards alike. Slide and card order
 is the Frappe child-row `idx`; there is no second ordering field.
@@ -894,7 +959,20 @@ database identity and never leave the server.
 
 `None` means "not clickable" **and** "the target is no longer publishable" — a
 category disabled after linking, an unpublished page, a product that lost its
-slug, or a stored URL that is no longer http(s). A dead link is never shipped.
+slug, or a stored URL that is neither a safe internal route nor http(s). A dead
+link is never shipped.
+
+**An `external_url` destination is not necessarily external (Phase 28A).** The
+field accepts an internal route as well as an absolute URL, so the type says what
+was STORED and `external` says where it GOES: `false` for an in-app route the SPA
+router owns, `true` for a link that leaves the storefront. Clients switch on
+`external`, never on the type.
+
+> The projector previously demanded a scheme AND a netloc, so a route a merchant
+> had legitimately saved projected as `None` and the menu item silently
+> disappeared. Save and runtime disagreed; Phase 28A made them agree. Every
+> save-time rule is still re-applied at projection rather than trusted, `//host`
+> included.
 
 A `storefront_page` destination carries a **null `href`**. The dynamic page route
 is `/pages/:slug` (decided in Phase 25C) and Angular builds it from `target`; the
