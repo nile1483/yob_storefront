@@ -205,6 +205,99 @@ class MenuDestinationCase(NavigationBase):
 
         self.assertEqual(node.external_url, "https://example.com/blog")
 
+    # ------------------------------------------------- Phase 28C: All Products
+
+    def test_all_products_is_an_allowed_destination_type(self):
+        options = frappe.get_meta("YOB Storefront Menu Item").get_field("item_type").options
+
+        self.assertIn("All Products", options)
+
+    def test_all_products_validates_with_no_target_at_all(self):
+        """A fixed-route type: the route is the type, so there is nothing to set."""
+
+        menu = self.make_menu()
+
+        node = self.make_item(menu.name, "Shop All", "All Products")
+
+        self.assertEqual(node.item_type, "All Products")
+        self.assertIsNone(node.storefront_category)
+        self.assertIsNone(node.storefront_page)
+        self.assertIsNone(node.external_url)
+
+    def test_the_all_products_label_stays_the_merchants_own(self):
+        """The type fixes the DESTINATION, never the wording on the button."""
+
+        menu = self.make_menu()
+
+        for label in ("Products", "Shop All", "Everything", "Full Range"):
+            node = self.make_item(menu.name, label, "All Products")
+            self.assertEqual(node.label, label)
+
+    def test_all_products_is_not_a_group(self):
+        menu = self.make_menu()
+
+        node = self.make_item(menu.name, "Products", "All Products")
+
+        self.assertEqual(node.is_group, 0)
+
+    def test_switching_to_all_products_clears_a_stale_target(self):
+        """The existing convention, unchanged: fields of the other types are
+        CLEARED on save, exactly as switching to Home or Catalog already does."""
+
+        menu = self.make_menu()
+        category = self.make_category()
+        node = self.make_item(menu.name, "Tools", "Storefront Category",
+                              storefront_category=category.name)
+
+        node.item_type = "All Products"
+        node.save(ignore_permissions=True)
+        node.reload()
+
+        self.assertIsNone(node.storefront_category,
+                          "a stale destination survived the type change")
+
+    def test_switching_away_from_all_products_still_requires_a_target(self):
+        menu = self.make_menu()
+        node = self.make_item(menu.name, "Products", "All Products")
+
+        node.item_type = "Storefront Category"
+
+        with self.assertRaises(frappe.ValidationError):
+            node.save(ignore_permissions=True)
+
+    def test_an_external_url_typed_route_is_still_accepted(self):
+        """Phase 28A stays intact. `All Products` is additive, not a replacement:
+        a merchant with `/products` already stored in an External URL keeps it."""
+
+        menu = self.make_menu()
+
+        node = self.make_item(menu.name, "Products", "External URL",
+                              external_url="/products")
+
+        self.assertEqual(node.external_url, "/products")
+
+    def test_every_existing_destination_type_still_validates(self):
+        """The new type must not disturb the ones already configured."""
+
+        menu = self.make_menu()
+        category = self.make_category()
+        page = self.make_page()
+
+        self.assertEqual(self.make_item(menu.name, "H", "Home").item_type, "Home")
+        self.assertEqual(self.make_item(menu.name, "C", "Catalog").item_type, "Catalog")
+        self.assertEqual(
+            self.make_item(menu.name, "Cat", "Storefront Category",
+                           storefront_category=category.name).storefront_category,
+            category.name)
+        self.assertEqual(
+            self.make_item(menu.name, "P", "Storefront Page",
+                           storefront_page=page.name).storefront_page, page.name)
+        self.assertEqual(
+            self.make_item(menu.name, "U", "External URL",
+                           external_url="https://example.com").external_url,
+            "https://example.com")
+        self.assertEqual(self.make_item(menu.name, "G", "Group").is_group, 1)
+
     def test_item_group_is_not_a_destination_type(self):
         """ERPNext Item Group stays internal ERP structure."""
 

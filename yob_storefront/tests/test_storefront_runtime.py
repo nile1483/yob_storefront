@@ -300,6 +300,108 @@ class MenuRuntimeCase(RuntimeBase):
         self.assertTrue(destination["external"])
         self.assertTrue(destination["open_in_new_tab"])
 
+    # ------------------------------------------------- Phase 28C: All Products
+
+    def test_all_products_projects_the_fixed_products_route(self):
+        """The whole contract of the type, in one assertion."""
+
+        menu = self.make_menu()
+        self.make_node(menu.name, "Shop All", "All Products")
+
+        destination = self.data(self.menu("r25-main"))["items"][0]["destination"]
+
+        self.assertEqual(destination["type"], "all_products")
+        self.assertEqual(destination["href"], "/products")
+        self.assertFalse(destination["external"])
+
+    def test_all_products_carries_no_target_and_never_opens_a_new_tab(self):
+        """A fixed route has nothing to point AT, so `target` stays null -- the
+        same shape Home and Catalog have always had. `open_in_new_tab` is cleared
+        on save for every type but External URL, so the backend can never imply
+        `target="_blank"` here.
+        """
+
+        menu = self.make_menu()
+        self.make_node(menu.name, "Products", "All Products", open_in_new_tab=1)
+
+        destination = self.data(self.menu("r25-main"))["items"][0]["destination"]
+
+        self.assertIsNone(destination["target"])
+        self.assertFalse(destination["open_in_new_tab"])
+        self.assertFalse(destination["external"])
+
+    def test_the_all_products_label_is_the_merchants_not_the_types(self):
+        menu = self.make_menu()
+        self.make_node(menu.name, "Shop Everything", "All Products")
+
+        item = self.data(self.menu("r25-main"))["items"][0]
+
+        self.assertEqual(item["label"], "Shop Everything")
+        self.assertEqual(item["destination"]["href"], "/products")
+
+    def test_all_products_leaks_no_database_identity(self):
+        menu = self.make_menu()
+        self.make_node(menu.name, "Products", "All Products")
+
+        payload = json.dumps(self.data(self.menu("r25-main")))
+
+        for internal in ("item_type", "storefront_category", "storefront_page",
+                         "external_url", "All Products", "lft", "rgt", "doctype",
+                         "parent_yob_storefront_menu_item"):
+            self.assertNotIn(internal, payload, f"{internal} leaked to the client")
+
+    def test_all_products_projects_through_the_shared_projector(self):
+        """Called directly, so the route cannot quietly be menu-only logic."""
+
+        from yob_storefront.services.storefront_destination import (
+            MENU_FIELDS,
+            project_destination,
+        )
+
+        # `open_in_new_tab` is set deliberately: a fixed route ignores it, exactly
+        # as Home and Catalog always have, so a stale 1 left on a row cannot make
+        # an in-app link open in a new tab.
+        stored = frappe._dict({"item_type": "All Products", "open_in_new_tab": 1})
+
+        self.assertEqual(
+            project_destination(stored, MENU_FIELDS),
+            {"type": "all_products", "target": None, "href": "/products",
+             "external": False, "open_in_new_tab": False})
+
+    def test_every_target_less_type_declares_its_route(self):
+        """Guards the two maps against drifting apart.
+
+        A type registered in TYPE_MAP with no target field but no entry in
+        IMPLIED_ROUTES would raise a KeyError inside the projection rather than
+        answering anything -- caught here instead of in production.
+        """
+
+        from yob_storefront.services.storefront_destination import (
+            IMPLIED_ROUTES,
+            TYPE_MAP,
+        )
+
+        target_less = {machine for machine, field in TYPE_MAP.values() if field is None}
+
+        self.assertEqual(target_less, set(IMPLIED_ROUTES),
+                         "a fixed-route type has no route, or vice versa")
+
+    def test_the_other_fixed_routes_are_unchanged(self):
+        """Adding a third route type must not disturb the two that existed."""
+
+        menu = self.make_menu()
+        self.make_node(menu.name, "Home", "Home")
+        self.make_node(menu.name, "Shop", "Catalog")
+
+        found = {item["destination"]["type"]: item["destination"]
+                 for item in self.data(self.menu("r25-main"))["items"]}
+
+        self.assertEqual(found["home"]["href"], "/")
+        self.assertEqual(found["catalog"]["href"], "/catalog")
+        for destination in found.values():
+            self.assertFalse(destination["external"])
+            self.assertIsNone(destination["target"])
+
     # ------------------------------------------------- Phase 28A internal routes
 
     def test_an_internal_route_projects_as_an_in_app_link(self):
@@ -307,6 +409,12 @@ class MenuRuntimeCase(RuntimeBase):
         single-leading-slash route since Phase 25B, but the projector demanded a
         scheme AND a netloc -- so a route a merchant had legitimately saved
         projected as None and the menu item silently disappeared.
+
+        Phase 28C added a first-class `All Products` type for this destination,
+        which is the type a merchant should now pick. It did NOT retire this
+        capability: an External URL holding `/products` still works, because
+        stored menus already rely on it and generic internal routes are useful
+        for destinations that have no type of their own.
         """
 
         menu = self.make_menu()
@@ -321,6 +429,27 @@ class MenuRuntimeCase(RuntimeBase):
         self.assertEqual(destination["href"], "/products")
         self.assertFalse(destination["external"],
                          "an in-app route must not be flagged as leaving the site")
+
+    def test_the_two_ways_to_reach_products_agree_on_the_route(self):
+        """`All Products` and a stored `/products` route are different STORED
+        destinations that land on the same page. The machine types differ on
+        purpose -- one is a fixed contract, the other is merchant input -- but a
+        buyer must not be able to tell which button they clicked.
+        """
+
+        menu = self.make_menu()
+        self.make_node(menu.name, "Typed", "All Products")
+        self.make_node(menu.name, "Routed", "External URL", external_url="/products")
+
+        found = {item["label"]: item["destination"]
+                 for item in self.data(self.menu("r25-main"))["items"]}
+
+        self.assertEqual(found["Typed"]["href"], found["Routed"]["href"], "/products")
+        self.assertFalse(found["Typed"]["external"])
+        self.assertFalse(found["Routed"]["external"])
+
+        self.assertEqual(found["Typed"]["type"], "all_products")
+        self.assertEqual(found["Routed"]["type"], "external_url")
 
     def test_the_internal_route_rule_is_generic_not_products_specific(self):
         """Nothing here knows what `/products` means -- any safe route projects."""

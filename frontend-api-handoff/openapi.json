@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.10.0",
+  "version": "3.11.0",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -1397,11 +1397,13 @@
       "enum": [
        "home",
        "catalog",
+       "all_products",
        "storefront_category",
        "storefront_page",
        "product",
        "external_url"
-      ]
+      ],
+      "description": "`home`, `catalog` and `all_products` are FIXED routes: they carry a null `target` and a backend-owned `href` that no merchant can edit. The rest name a record."
      },
      "target": {
       "type": "string",
@@ -1411,7 +1413,7 @@
      "href": {
       "type": "string",
       "nullable": true,
-      "description": "ready-made route where one exists. **always null for `storefront_page`** -- the SPA route is `/pages/:slug`, built from `target` on the client."
+      "description": "ready-made route where one exists. **always null for `storefront_page`** -- the SPA route is `/pages/:slug`, built from `target` on the client. `all_products` is always exactly `/products`."
      },
      "external": {
       "type": "boolean",

@@ -106,11 +106,20 @@ non-clickable. Ordering is the merchant's; do not re-sort.
 
 **Destinations** are normalised everywhere — menu items, image banners, carousel
 slides and promo cards all use the identical shape. `type` is one of `home`,
-`catalog`, `storefront_category`, `storefront_page`, `product`, `external_url`;
-`target` is a **public slug**, never a database id. `href` is ready to use for
-every type except **`storefront_page`, which is always `null`** — the dynamic page
-route is `/pages/:slug`, so build `/pages/${target}` on the client. The backend
-stores no route by design.
+`catalog`, `all_products`, `storefront_category`, `storefront_page`, `product`,
+`external_url`; `target` is a **public slug**, never a database id. `href` is
+ready to use for every type except **`storefront_page`, which is always `null`** —
+the dynamic page route is `/pages/:slug`, so build `/pages/${target}` on the
+client. The backend stores no route by design.
+
+**`home`, `catalog` and `all_products` are FIXED routes** — `/`, `/catalog` and
+`/products`. They carry a **null `target`**, an `href` no merchant can edit, and
+`external: false`. Nothing to look up and nothing to validate, so they never
+project as `null`.
+
+`all_products` is new in **3.11.0**: a merchant picks the `All Products` menu type
+and gets `/products`, with the button's wording still entirely theirs. Handle it
+exactly like `catalog` — the only difference is the route.
 
 **Switch on `external`, never on `type`.** An `external_url` destination is not
 necessarily external: the merchant Menu has always accepted a single-leading-slash
@@ -119,6 +128,12 @@ a route projects with `external: false` and `href` equal to the route — use th
 SPA router for it. Only `external: true` should become a plain anchor.
 Scheme-relative (`//example.com`) and unsafe targets project as `null`, exactly as
 before.
+
+That generic capability is **unchanged** by the `all_products` type. A menu
+configured before 3.11.0 with `/products` in an External URL still arrives as
+`{type:"external_url", href:"/products", external:false}` and must keep working;
+`all_products` is the tidier way to express the same destination, not a
+replacement. Both land on the same page, so a buyer cannot tell them apart.
 
 **`catalog.get_category_filters(scope_value)`** returns the facets for a category:
 

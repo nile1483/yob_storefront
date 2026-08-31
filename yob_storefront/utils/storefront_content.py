@@ -141,7 +141,11 @@ def bounded_int(value, *, field, minimum, maximum, required=False):
 # is real and publishable.
 
 #: Types that need no target: the route is implied by the type itself.
-IMPLIED_ROUTE_TYPES = {"", None, "None", "Home", "Catalog", "Group"}
+#:
+#: `All Products` joins them in Phase 28C. It carries no field of its own on
+#: purpose -- the route is fixed by the type, so there is nothing for a merchant
+#: to mistype and nothing for a projection to re-validate.
+IMPLIED_ROUTE_TYPES = {"", None, "None", "Home", "Catalog", "All Products", "Group"}
 
 
 def apply_destination(doc, *, type_field, field_map, new_tab_field=None):
@@ -149,7 +153,7 @@ def apply_destination(doc, *, type_field, field_map, new_tab_field=None):
 
     `field_map` maps a destination TYPE to the fieldname that carries its target,
     e.g. ``{"Storefront Category": "link_category"}``. A type absent from the map
-    is an implied route (Home, Catalog) and needs no target.
+    is an implied route (Home, Catalog, All Products) and needs no target.
 
     Clearing the other types' fields is what stops a destination that changed type
     from leaving a stale target behind for a projection to read later.

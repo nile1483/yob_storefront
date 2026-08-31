@@ -27,7 +27,7 @@ caller renders nothing rather than a dead link.
 
 ROUTES
 ------
-`href` mirrors the routes Angular already serves (`/catalog`,
+`href` mirrors the routes Angular already serves (`/`, `/catalog`, `/products`,
 `/catalog/:categorySlug`, `/catalog/item/:itemSlug`). A page destination carries
 `type` + `target` and a **null href**: the dynamic page route is `/pages/:slug`,
 and a client builds it from `target`. Storing that route here would put an SPA
@@ -46,10 +46,28 @@ import frappe
 TYPE_MAP = {
     "Home": ("home", None),
     "Catalog": ("catalog", None),
+    "All Products": ("all_products", None),
     "Storefront Category": ("storefront_category", "category"),
     "Storefront Page": ("storefront_page", "page"),
     "Product": ("product", "item"),
     "External URL": ("external_url", "url"),
+}
+
+#: Machine type -> the fixed route it always means.
+#:
+#: These are the destinations with NO target field: the type IS the answer, so
+#: the route is backend-owned and a merchant never types it. That is the whole
+#: difference between `All Products` and storing `/products` in an External URL
+#: -- the same page, but one is a fixed contract and the other is merchant input
+#: that has to be parsed and re-validated on every projection.
+#:
+#: Every target-less entry in TYPE_MAP must appear here. `MenuDestinationCase`
+#: asserts the two maps stay in step, so a new route type cannot be registered
+#: and then quietly project a KeyError.
+IMPLIED_ROUTES = {
+    "home": "/",
+    "catalog": "/catalog",
+    "all_products": "/products",
 }
 
 #: Fieldname suffixes as used by menu items and by content blocks. The two spell
@@ -90,7 +108,9 @@ def project_destination(doc, fields=CONTENT_FIELDS):
     machine_type, target_key = TYPE_MAP[stored_type]
 
     if target_key is None:
-        return _link(machine_type, href="/" if machine_type == "home" else "/catalog")
+        # A fixed route. No target to look up, so nothing can have been disabled
+        # or deleted underneath it and this branch never answers None.
+        return _link(machine_type, href=IMPLIED_ROUTES[machine_type])
 
     fieldname = fields.get(target_key)
 

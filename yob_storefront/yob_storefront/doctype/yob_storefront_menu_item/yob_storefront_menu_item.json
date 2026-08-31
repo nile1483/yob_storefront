@@ -51,10 +51,10 @@
    "fieldname": "item_type",
    "fieldtype": "Select",
    "label": "Item Type",
-   "options": "\nGroup\nHome\nCatalog\nStorefront Category\nStorefront Page\nExternal URL",
+   "options": "\nGroup\nHome\nCatalog\nAll Products\nStorefront Category\nStorefront Page\nExternal URL",
    "reqd": 1,
    "in_list_view": 1,
-   "description": "`Group` organises; every other type is a destination."
+   "description": "`Group` organises; every other type is a destination. `Home`, `Catalog` and `All Products` need no target."
   },
   {
    "fieldname": "enabled",
@@ -101,7 +101,7 @@
    "options": "URL",
    "depends_on": "eval:doc.item_type==\"External URL\"",
    "mandatory_depends_on": "eval:doc.item_type==\"External URL\"",
-   "description": "http or https only."
+   "description": "An internal route such as `/account`, or an http(s) URL. For the products page use the `All Products` type instead."
   },
   {
    "fieldname": "open_in_new_tab",

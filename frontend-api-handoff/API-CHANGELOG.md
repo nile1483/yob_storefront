@@ -10,6 +10,50 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. An `all_products` destination type (OpenAPI 3.11.0)
+
+**Additive.** One new value in the `Destination.type` enum. No existing
+destination changed shape, meaning or behaviour.
+
+**OLD** — a merchant who wanted a menu item pointing at `/products` had to choose
+`External URL` and type the route by hand. It worked (see 3.10.0), but the admin
+label said "External URL" for a page that is not external, and the route was
+merchant input rather than a contract.
+
+**CURRENT** — `All Products` is a first-class menu destination type, alongside
+`Home` and `Catalog`:
+
+```
+{"type":"all_products","target":null,"href":"/products",
+ "external":false,"open_in_new_tab":false}
+```
+
+Like `home` and `catalog` it is a **fixed route**: `target` is null, `href` is
+backend-owned and always exactly `/products`, and `external` is always `false`.
+There is no field for a merchant to type a route into, so there is nothing to
+mistype and nothing for the client to validate.
+
+**The button's wording stays the merchant's.** `All Products` is the admin-facing
+TYPE; the visible `label` is whatever they entered — "Products", "Shop All",
+anything. Never render the type name.
+
+**FRONTEND ACTION** — handle `all_products` exactly like `catalog`: route to
+`href` with the SPA router. If your link component switches exhaustively on
+`type`, add the case; if it already uses `href` + `external`, it needs no change
+at all.
+
+**`External URL` holding `/products` still works and is not deprecated in the
+wire contract.** A menu configured before 3.11.0 keeps arriving as
+`{type:"external_url", href:"/products", external:false}`. Both types land on the
+same page with the same `href` and the same `external` flag, so a buyer cannot
+tell which one a merchant used. Generic internal routes remain available for
+destinations that have no type of their own, such as `/account`.
+
+Unchanged in 3.11.0: every catalog contract — `ProductDetail`,
+`ProductMerchandising`, `ProductPageDetail`, `VariantFamily`, `resolve_variant`,
+`ProductSuggestion`, `BrowseCategory`, the ListingCard shape, `get_items` and
+every CMS block schema.
+
 ## 0. Catalogue-wide browsing, and a smaller page (OpenAPI 3.10.0)
 
 Three changes to `catalog.get_items`, plus one new endpoint. Additive except the

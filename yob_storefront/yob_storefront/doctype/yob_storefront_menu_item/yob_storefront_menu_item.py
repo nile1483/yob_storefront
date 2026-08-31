@@ -18,9 +18,15 @@ Typed, and validated against the records they point at:
 
     Home                 -> the storefront root
     Catalog              -> the catalogue root
+    All Products         -> the catalogue-wide browse (Phase 28C)
     Storefront Category  -> Link to Category, must be active and not a group
     Storefront Page      -> Link to YOB Storefront Page
-    External URL         -> http(s) only, checked by utils.storefront_content
+    External URL         -> an internal route or an http(s) URL, checked by
+                            utils.storefront_content
+
+The first three carry NO target field: the route is fixed by the type. A merchant
+picks `All Products` and gets `/products`; there is no box to type a route into,
+so there is nothing to mistype and nothing to re-validate at projection.
 
 ERPNext Item Group is deliberately absent: it is an internal ERP and pricing
 concept, never storefront taxonomy.
@@ -46,7 +52,10 @@ DESTINATION_FIELDS = {
     "External URL": "external_url",
 }
 
-ITEM_TYPES = {GROUP, "Home", "Catalog", *DESTINATION_FIELDS}
+#: Destinations whose route is fixed by the type, so they need no target field.
+ROUTE_TYPES = {"Home", "Catalog", "All Products"}
+
+ITEM_TYPES = {GROUP, *ROUTE_TYPES, *DESTINATION_FIELDS}
 
 
 class YOBStorefrontMenuItem(NestedSet):

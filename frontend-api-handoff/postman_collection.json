@@ -1393,7 +1393,7 @@
         }
        ]
       },
-      "description": "AUTH\n\nPublished navigation tree, max two levels. Destinations are normalised: type + public slug (+ href where a route exists)."
+      "description": "AUTH\n\nPublished navigation tree, max two levels. Destinations are normalised: type + public slug (+ href where a route exists).\n\nDestination types: home, catalog, all_products, storefront_category, storefront_page, product, external_url. The first three are FIXED routes (/, /catalog, /products) with a null target and a backend-owned href.\n\nSwitch on `external`, never on `type`: an external_url may hold an internal route such as /products or /account and projects with external=false."
      }
     },
     {

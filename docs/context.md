@@ -903,9 +903,11 @@ Text is sanitised on save with Frappe's own cleaner — Angular's sanitizer is t
 last line of defence, not the only one.
 
 **Destinations are typed and shared with navigation.** A merchant picks a type
-(Catalog · Storefront Category · Storefront Page · Product · External URL) and a
-record; nobody types an Angular route, and route construction belongs to the
-Phase 25C projection, never to Desk JavaScript. A Product destination accepts a
+(Catalog · Storefront Category · Storefront Page · Product · External URL for a
+content block; Home · Catalog · All Products · Storefront Category ·
+Storefront Page · External URL for a menu item) and a record; nobody types an
+Angular route, and route construction belongs to the Phase 25C projection, never
+to Desk JavaScript. A Product destination accepts a
 simple Item or a variant FAMILY with a slug and refuses a generated variant —
 Phase 24 family routing stays authoritative. An External URL is either an
 absolute http(s) URL or a single-leading-slash INTERNAL route -- `validate_destination()`
@@ -961,6 +963,37 @@ database identity and never leave the server.
 category disabled after linking, an unpublished page, a product that lost its
 slug, or a stored URL that is neither a safe internal route nor http(s). A dead
 link is never shipped.
+
+### Fixed-route destinations (Phase 28C)
+
+`Home`, `Catalog` and `All Products` carry NO target field: the route is fixed by
+the type, so `TYPE_MAP` pairs them with a `None` field and `IMPLIED_ROUTES` holds
+the answer -- `/`, `/catalog`, `/products`. They project a null `target`, a
+backend-owned `href` and `external: false`, and they are the only destinations
+that can never answer `None`, because there is no record underneath them to be
+disabled or deleted.
+
+`All Products` exists because a merchant wanting `/products` previously had to
+pick `External URL` and type the route. That works and still works, but the admin
+label said "External URL" for a page that is not external, and the route was
+merchant input rather than a contract. The two are deliberately DIFFERENT stored
+destinations projecting different machine types onto the same `href`: one is a
+fixed contract, the other is input that must be re-validated on every projection.
+
+It is registered in the SHARED `TYPE_MAP`, so the projector answers it on every
+surface. Only the MENU Select offers it, exactly as `Home` has always been
+menu-only -- `TYPE_MAP` is the superset and each admin surface curates its own
+subset. Offering it on content blocks later is a Select change with no projector
+work.
+
+The visible menu label stays entirely the merchant's: the type fixes the
+destination, never the wording.
+
+`ROUTE_TYPES` in the Menu Item controller and `IMPLIED_ROUTE_TYPES` in
+`storefront_content` both name these types; `apply_destination()` clears every
+other type's target field before returning, so switching a configured item to
+`All Products` leaves no stale target behind. That is the existing convention for
+`Home` and `Catalog`, not a new one.
 
 **An `external_url` destination is not necessarily external (Phase 28A).** The
 field accepts an internal route as well as an absolute URL, so the type says what
