@@ -50,6 +50,11 @@ PRODUCT_DETAIL_KEYS = {
     "is_template", "is_purchasable", "variant_of", "selected",
     "base_price", "rate", "discount_percentage", "discount_amount",
     "net_amount", "tax_amount", "tax_label", "total_amount",
+    # Phase 29A. Resolved-SKU facts from the same Item Price as the rate, so
+    # they belong to the SHARED serializer and `resolve_variant` carries them
+    # too. `mrp` is informational; `quantity_control` is buying-area guidance
+    # the backend never enforces. Neither is merchandising.
+    "mrp", "quantity_control",
     "uom", "stock_uom", "conversion_factor", "stock_qty",
     "is_stock_item", "warehouse", "actual_qty",
     "pricing", "pricing_rule_label", "pricing_rule_apply_on", "available_rules",

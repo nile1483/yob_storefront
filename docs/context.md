@@ -400,6 +400,104 @@ today.
 **No synthetic `All`.** Catalogue-wide browsing is the absence of `scope_value`,
 not a category the merchant owns.
 
+## Item Price storefront metadata (Phase 29A)
+
+Three optional custom fields on ERPNext **Item Price**, installed through
+`install.ensure_custom_fields()` like every other YOB field on a dependency
+DocType:
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `custom_moq` | Float | starting/minimum storefront quantity |
+| `custom_quantity_multiplier` | Float | storefront quantity STEP from that start |
+| `custom_mrp` | Currency (`options: currency`) | Maximum Retail Price, display only |
+
+On **Item Price** rather than Item because all three are properties of a PRICE: a
+customer-specific price list may carry a different minimum, step and MRP for the
+same SKU. On Item they would force one answer for every customer.
+
+`custom_mrp` reuses the Item Price's own `currency` field. A second currency
+field could disagree with the first, and this value is never converted.
+
+### Two purposes, deliberately not one feature
+
+    MOQ + Quantity Multiplier  ->  storefront quantity-input GUIDANCE
+    MRP                        ->  informational display ONLY
+
+The multiplier is an INCREMENT FROM THE START, not a divisor: `moq 10` with
+`multiplier 6` means 10, 16, 22 -- not 12, 18, 24, and not "divisible by 6".
+
+None of the three is UOM, conversion-factor or pack-size metadata, and none
+touches stock, warehouse or reservation.
+
+### Which Item Price
+
+The row ERPNext actually priced against -- never "any row for this SKU".
+
+ERPNext discards that identity: `get_price_list_rate_for()` reads
+`get_item_price()[0]` and returns only `price_list_rate`, and the Sales Order
+Item it fills has no field naming the Item Price. So the temporary Sales Order is
+authoritative for the RATE and silent about the SOURCE.
+
+`pricing_service.resolve_item_price_source()` recovers it by calling ERPNext's
+own `get_item_price()` -- the same function, so the ranked pick
+(customer-specific before generic, latest `valid_from`, batch, then UOM,
+`LIMIT 1`) stays ERPNext's and is not reimplemented. Only the two-step ladder
+around it is mirrored, and each step mirrors a specific ERPNext line: retry in
+`stock_uom` (`get_item_details.py:1280`) and fall back variant -> template
+(`get_item_details.py:1043`).
+
+> The variant -> template fallback is near-unreachable in practice: ERPNext's own
+> `ItemPrice.validate` refuses a price on an item with `has_variants`, the same
+> constraint that stops a family card carrying a price. It is mirrored anyway,
+> because a template that acquired a price BEFORE it became one is a real stored
+> state. `test_erpnext_refuses_an_item_price_on_a_template` pins the constraint.
+
+### `quantity_control.allowed`
+
+`False` exactly when the authoritative pricing preview attached **at least one
+Pricing Rule** to the row -- read from the same `pricing_rules` that already
+produces `pricing_rule_label`. ERPNext funnels every promotional mechanism
+through that field (rate/discount rule, promotional scheme, Product Discount,
+free-item rule), so one check covers them all without this module knowing what
+any of them are.
+
+The reason is quantity, not price: a rule that changes behaviour at a threshold
+makes "start at 10, step by 6" a claim the storefront cannot honour. Deliberately
+NOT a prediction engine -- answering "would a rule apply at 16?" means evaluating
+hypothetical quantities through ERPNext's rule stack, which is the unbounded work
+Phase 22B removed.
+
+MOQ and the multiplier are a PAIR under one flag; both are still published when
+`allowed` is false, for transparency. MRP is INDEPENDENT: informational, no
+quantity behaviour, therefore no conflict.
+
+### The architectural boundary
+
+**No backend enforcement, anywhere.** Nothing in `get_item`, `resolve_variant`,
+`add_to_cart`, cart update, checkout or Sales Order consults MOQ or the
+multiplier. A quantity below MOQ or off the step sequence behaves exactly as it
+did before these fields existed, and no `minimum_order_qty` /
+`invalid_quantity_step` error code exists.
+
+**MRP never reaches pricing.** Changing it alone leaves base price, rate,
+discount, tax and total identical, and no saving or percentage is derived from
+it.
+
+`NoBackendEnforcementCase` and `MRPIsInformationalCase` in
+`tests/test_item_price_guidance.py` exist to keep both true.
+
+### Where it is published
+
+`ProductDetail` -- so `catalog.get_item` (simple) and `catalog.resolve_variant`
+both carry it, and selecting a variant re-resolves it with the price. NOT
+merchandising, so `resolve_variant` still carries no gallery or sections.
+
+`get_item_pricing(..., with_price_metadata=True)` is opt-in: the product-detail
+serializer asks for it, the catalogue listing does not. It costs one ranked
+lookup plus one row read per item -- nothing on a product page, 48 extra queries
+on a 24-card listing. Listing cards, suggestions and browse chips are unchanged.
+
 ## Row-level tax on `pricing_rows` (Phase 23B-3)
 
 `cart.pricing_rows` is authoritative for row **price and row tax**. Each row gains:

@@ -302,6 +302,75 @@ def ensure_custom_fields():
                     "insert_after": "custom_storefront_content_section",
                 },
             ],
+            # ------------------------------------------------------------------
+            # ITEM PRICE -- storefront metadata on the price row itself
+            # (Phase 29A).
+            #
+            # On Item Price rather than Item because all three are properties of
+            # a PRICE, not of a product: a customer-specific price list may carry
+            # a different minimum, a different step and a different MRP for the
+            # same SKU. Putting them on Item would force one answer for every
+            # customer.
+            #
+            # None of the three participates in any ERPNext calculation. MOQ and
+            # the multiplier are storefront quantity GUIDANCE, published for the
+            # buying area and never enforced by cart, checkout or Sales Order
+            # validation. MRP is informational display only -- it is never passed
+            # into pricing and no discount or saving is derived from it.
+            # ------------------------------------------------------------------
+            "Item Price": [
+                {
+                    "fieldname": "custom_storefront_section",
+                    "label": "Storefront",
+                    "fieldtype": "Section Break",
+                    "insert_after": "price_list_rate",
+                },
+                {
+                    "fieldname": "custom_moq",
+                    "label": "MOQ",
+                    "fieldtype": "Float",
+                    "insert_after": "custom_storefront_section",
+                    "non_negative": 1,
+                    "description": (
+                        "Minimum/starting storefront quantity. GUIDANCE ONLY: the "
+                        "buying area opens at this quantity, and nothing in cart, "
+                        "checkout or Sales Order rejects a smaller one. Blank or "
+                        "0 means not configured."
+                    ),
+                },
+                {
+                    "fieldname": "custom_quantity_multiplier",
+                    "label": "Quantity Multiplier",
+                    "fieldtype": "Float",
+                    "insert_after": "custom_moq",
+                    "non_negative": 1,
+                    "description": (
+                        "Storefront quantity STEP, counted from the starting "
+                        "quantity -- MOQ 10 with multiplier 6 offers 10, 16, 22, "
+                        "not multiples of 6. Guidance only, never enforced, and "
+                        "unrelated to UOM, conversion factor or pack size. Blank "
+                        "or 0 means not configured."
+                    ),
+                },
+                {
+                    "fieldname": "custom_mrp",
+                    "label": "MRP",
+                    "fieldtype": "Currency",
+                    # The Item Price's OWN currency field. There is deliberately
+                    # no second currency here: two currency fields on one row can
+                    # disagree, and this value is never converted or calculated
+                    # with, only displayed.
+                    "options": "currency",
+                    "insert_after": "custom_quantity_multiplier",
+                    "non_negative": 1,
+                    "description": (
+                        "Maximum Retail Price, INFORMATIONAL ONLY. Never used as "
+                        "a base price, rate, discount or total, and no saving is "
+                        "computed from it. Not validated against the selling "
+                        "rate. Blank or 0 means not published."
+                    ),
+                },
+            ],
             "Payment Request": [
                 {
                     "fieldname": "custom_checkout_token",

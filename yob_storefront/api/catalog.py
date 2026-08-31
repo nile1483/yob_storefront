@@ -522,6 +522,11 @@ def _family_response(item, slug):
     }, notice="Product options loaded")
 
 
+#: Phase 29A metadata. Read from the pricing service, published at the TOP level
+#: of the detail and deliberately stripped from the nested `pricing` passthrough.
+PRICE_METADATA_KEYS = ("mrp", "quantity_control")
+
+
 def build_item_detail(customer, item_code, qty=1, slug=None, selected=None):
     """The priced product payload, for a simple Item or a resolved variant.
 
@@ -546,6 +551,10 @@ def build_item_detail(customer, item_code, qty=1, slug=None, selected=None):
         qty=qty,
         company=settings.company,
         currency=settings.default_currency,
+        # Phase 29A. Asked for HERE and nowhere else: these are product-page
+        # buying-area facts, and the catalogue listing deliberately stays as
+        # light as Phase 22B made it.
+        with_price_metadata=True,
     )
 
     stock_info = resolve_stock_availability(customer, item_code)
@@ -589,6 +598,18 @@ def build_item_detail(customer, item_code, qty=1, slug=None, selected=None):
         "tax_label":  pricing["tax_label"],
         "total_amount": pricing["total_amount"],
 
+        # Phase 29A. Both come from the SAME Item Price row the rate above came
+        # from, so selecting another variant re-resolves them with the price.
+        #
+        # `mrp` is INFORMATIONAL: nothing above is derived from it, and the
+        # backend computes no saving or discount against it.
+        #
+        # `quantity_control` is buying-area GUIDANCE, never enforcement. Cart,
+        # checkout and Sales Order accept any quantity they accepted before, so
+        # `allowed: false` means "do not apply the stepping", never "cannot buy".
+        "mrp": pricing["mrp"],
+        "quantity_control": pricing["quantity_control"],
+
         # The UOM the transaction actually resolved -- read off the priced
         # Sales Order row, not guessed from the Item. No selectable UOM here;
         # this is metadata so the frontend can display the right unit rather
@@ -610,7 +631,16 @@ def build_item_detail(customer, item_code, qty=1, slug=None, selected=None):
         "warehouse": stock_info["warehouse"],
         "actual_qty": stock_info["actual_qty"],
 
-        "pricing": pricing,
+        # The raw pricing payload, MINUS the Phase 29A keys. They are published
+        # ONCE, at the top level above: `pricing` is a passthrough of the pricing
+        # service, and it happening to duplicate `rate`, `uom` and friends is
+        # history, not a licence to give a new field two public homes. Two
+        # locations mean two things a client may read and two things that can
+        # drift apart.
+        "pricing": {
+            key: value for key, value in pricing.items()
+            if key not in PRICE_METADATA_KEYS
+        },
 
         "pricing_rule_label": pricing["pricing_rule_label"],
         "pricing_rule_apply_on": pricing["pricing_rule_apply_on"],

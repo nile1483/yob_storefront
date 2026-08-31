@@ -14,6 +14,159 @@ from pprint import pprint
 from erpnext.accounts.doctype.pricing_rule.utils import apply_pricing_rule_on_transaction
 
 # =========================================================
+# 0️⃣ STOREFRONT METADATA ON THE RESOLVED ITEM PRICE (Phase 29A)
+# =========================================================
+
+#: The storefront-owned custom fields carried by an Item Price row.
+ITEM_PRICE_STOREFRONT_FIELDS = ("custom_moq", "custom_quantity_multiplier", "custom_mrp")
+
+
+def resolve_item_price_source(item_code, *, price_list, customer, uom, stock_uom,
+                              transaction_date):
+    """The NAME of the Item Price row ERPNext's own ranked pick chose, or None.
+
+    WHY THIS EXISTS
+    ---------------
+    ERPNext resolves the price and then throws away which row produced it:
+    `get_price_list_rate_for()` reads `get_item_price()[0]` and returns only
+    `price_list_rate`, and the Sales Order Item it fills has no field naming the
+    Item Price. So a temporary Sales Order tells us the RATE authoritatively and
+    cannot tell us the SOURCE at all.
+
+    Phase 29A needs the source, because MOQ, the quantity multiplier and MRP are
+    properties of a price row: the customer-specific price list may carry
+    different ones from the generic list for the same SKU.
+
+    NOT A SECOND SELECTION ALGORITHM
+    --------------------------------
+    The ranked pick stays ERPNext's. This calls `get_item_price()` -- the exact
+    function `get_price_list_rate_for()` calls -- so customer-specific before
+    generic, latest `valid_from`, batch, then UOM, with `LIMIT 1`, all remain
+    ERPNext's ordering. What is mirrored here is only the two-step LADDER around
+    that call, and each step mirrors a specific ERPNext line:
+
+    * retry in `stock_uom` when the selling UOM found nothing
+      (`get_item_details.py:1280`);
+    * fall back from a variant to its template
+      (`get_item_details.py:1043`, guarded by `is None`).
+
+    Reproducing the ORDER BY would be a second implementation free to drift.
+    Reproducing two documented fallbacks is what keeps this row identical to the
+    row the rate came from.
+
+    Returns `None` when ERPNext found no Item Price at all, which is not an
+    error: the product simply has no storefront metadata to publish.
+    """
+
+    from erpnext.stock.get_item_details import get_item_price
+
+    def pick(code, unit):
+        rows = get_item_price(
+            frappe._dict({
+                "item_code": code,
+                "price_list": price_list,
+                "customer": customer,
+                "supplier": None,
+                "uom": unit,
+                "transaction_date": transaction_date,
+                "batch_no": None,
+            }),
+            code,
+        )
+        return rows[0].get("name") if rows else None
+
+    def resolve(code):
+        found = pick(code, uom)
+
+        if not found and stock_uom and uom != stock_uom:
+            found = pick(code, stock_uom)
+
+        return found
+
+    source = resolve(item_code)
+
+    if not source:
+        template = frappe.get_cached_value("Item", item_code, "variant_of")
+        if template:
+            source = resolve(template)
+
+    return source
+
+
+def configured_number(value):
+    """A configured storefront number, or None.
+
+    Blank, zero and negative all mean NOT CONFIGURED and collapse to the same
+    `None`. One rule for all three fields, applied at the runtime boundary rather
+    than at save, so a merchant may clear a value by typing 0 and a row written
+    before these fields existed behaves identically to a blank one.
+    """
+
+    number = flt(value)
+
+    return number if number > 0 else None
+
+
+def storefront_price_metadata(item_code, *, price_list, customer, uom, stock_uom,
+                              transaction_date, pricing_rules=None):
+    """MRP and quantity guidance from the SAME Item Price the rate came from.
+
+    `quantity_control.allowed` -- WHEN THE GUIDANCE MAY BE APPLIED
+    --------------------------------------------------------------
+    `False` exactly when the authoritative pricing preview attached **at least
+    one Pricing Rule** to this row, and `True` otherwise. That is read from
+    `pricing_rules` on the priced Sales Order row -- the signal this service
+    already produces and already publishes as `pricing_rule_label` -- so nothing
+    here evaluates, predicts or re-discovers a rule.
+
+    ERPNext funnels every promotional mechanism through that one field: a rate
+    or discount Pricing Rule, a promotional scheme, a Product Discount and a
+    free-item rule all register on the row they applied to. So the single check
+    covers them without this module knowing what any of them are.
+
+    The reason is quantity, not price. A rule that changes behaviour at a
+    quantity threshold makes "start at 10, step by 6" a claim the storefront
+    cannot honour, because the price at 16 may not follow from the price at 10.
+    Rather than predict the rule, the backend says the guidance is unsafe and the
+    client falls back to its ordinary quantity input.
+
+    Deliberately NOT a prediction engine. Answering "would a rule apply at 16?"
+    would mean evaluating hypothetical quantities through ERPNext's rule stack --
+    a second pricing engine, and the thing Phase 22B exists to avoid.
+
+    MOQ and the multiplier are a PAIR: one `allowed` covers both, because a start
+    without a safe step and a step without a safe start are equally unusable. The
+    configured values are still published when `allowed` is false, for
+    transparency in Desk and in support -- the contract says they must not be
+    applied, not that they must be hidden.
+
+    MRP is INDEPENDENT of all of this. It is informational, has no quantity
+    behaviour and therefore no conflict to have, so it is published whenever it
+    is configured, whatever `allowed` says.
+    """
+
+    source = resolve_item_price_source(
+        item_code, price_list=price_list, customer=customer, uom=uom,
+        stock_uom=stock_uom, transaction_date=transaction_date)
+
+    row = None
+
+    if source:
+        row = frappe.db.get_value(
+            "Item Price", source, ITEM_PRICE_STOREFRONT_FIELDS, as_dict=True)
+
+    return {
+        "mrp": configured_number(row.custom_mrp) if row else None,
+        "quantity_control": {
+            "moq": configured_number(row.custom_moq) if row else None,
+            "quantity_multiplier": (
+                configured_number(row.custom_quantity_multiplier) if row else None),
+            "allowed": not pricing_rules,
+        },
+    }
+
+
+# =========================================================
 # 1️⃣ ITEM PRICING (Single Item via Sales Order Engine)
 # =========================================================
 
@@ -24,10 +177,18 @@ def get_item_pricing(
     company,
     currency,
     selling_price_list=None,
-    coupon_code=None
+    coupon_code=None,
+    with_price_metadata=False,
 ):
     """
     Secure item pricing using full ERPNext Sales Order engine.
+
+    `with_price_metadata` adds `mrp` and `quantity_control` from the SAME Item
+    Price row this rate came from (Phase 29A). OFF by default and deliberately
+    opt-in: it costs one extra ranked lookup plus one row read per item, which is
+    nothing on a product page and 48 extra queries on a 24-card listing. The
+    product-detail serializer asks for it; the catalogue listing does not, and
+    listing payloads are unchanged.
     """
 
     if not customer:
@@ -149,7 +310,7 @@ def get_item_pricing(
     }
 
     # ---------------- FINAL RESPONSE ----------------
-    return {
+    pricing = {
         "item": safe_item,
         "selling_price_list": selling_price_list,
         "qty": qty,
@@ -187,6 +348,23 @@ def get_item_pricing(
         "conversion_factor": row.conversion_factor,
         "stock_qty": row.stock_qty,
     }
+
+    if with_price_metadata:
+        # Resolved from the row ERPNext just priced against: its OWN selling UOM,
+        # its OWN price list and this customer -- so the metadata cannot come
+        # from a different Item Price than the rate did. `pricing_rules` is the
+        # authoritative preview's own answer, not a second evaluation.
+        pricing.update(storefront_price_metadata(
+            item_code,
+            price_list=selling_price_list,
+            customer=customer_doc.name,
+            uom=row.uom,
+            stock_uom=row.stock_uom,
+            transaction_date=so.transaction_date,
+            pricing_rules=pricing_rules,
+        ))
+
+    return pricing
 
 
 # =========================================================

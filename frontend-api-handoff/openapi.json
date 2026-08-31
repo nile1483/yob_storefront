@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "YOB Storefront & Auth API \u2014 frontend contract",
-  "version": "3.11.0",
+  "version": "3.12.0",
   "description": "Frappe RPC API. Every response is wrapped by Frappe in an outer `message` object; inside is the YOB envelope (`data` plus optional `notice`/`meta` on success, `errors[]` on failure). There is no `success` boolean: branch on HTTP status, then `errors[0].code`.\n\nAuthenticated storefront endpoints need the HttpOnly `sid` cookie and, for non-GET, `X-Frappe-CSRF-Token`.\n\nThe three payment endpoints are PUBLIC. `/payment/<token>` requires NO storefront session: `get_checkout_data` and `process_payment` are authorized by the checkout token, and `verify_payment` by Razorpay's HMAC signature. Do not place them behind a session guard.\n\nSee FRONTEND-CONTRACT.md for prose that this document cannot fully express."
  },
  "servers": [
@@ -920,7 +920,9 @@
      "pricing",
      "pricing_rule_label",
      "pricing_rule_apply_on",
-     "available_rules"
+     "available_rules",
+     "mrp",
+     "quantity_control"
     ],
     "properties": {
      "name": {
@@ -996,6 +998,36 @@
      },
      "total_amount": {
       "type": "number"
+     },
+     "mrp": {
+      "type": "number",
+      "nullable": true,
+      "description": "Maximum Retail Price from the resolved Item Price, in the Item Price's own currency. **INFORMATIONAL DISPLAY ONLY.** It is not a base price, rate, discount or total, no monetary field is derived from it, and the backend computes no saving or percentage against it. Not validated against the selling rate, so it may be lower. Null when not configured (blank, 0 or negative). Independent of `quantity_control.allowed` -- it is published even when the guidance is disallowed, because it has no quantity behaviour and therefore no conflict."
+     },
+     "quantity_control": {
+      "type": "object",
+      "description": "Storefront quantity-input GUIDANCE from the resolved Item Price. **Never enforced by the backend** -- cart, checkout and Sales Order accept exactly the quantities they accepted before these fields existed.",
+      "required": [
+       "moq",
+       "quantity_multiplier",
+       "allowed"
+      ],
+      "properties": {
+       "moq": {
+        "type": "number",
+        "nullable": true,
+        "description": "Starting/minimum storefront quantity, or null when not configured (blank, 0 or negative all normalise to null)."
+       },
+       "quantity_multiplier": {
+        "type": "number",
+        "nullable": true,
+        "description": "Quantity STEP counted FROM the starting quantity -- moq 10 with multiplier 6 offers 10, 16, 22, NOT multiples of 6 and NOT a divisible-by-6 rule. Null when not configured. Unrelated to UOM, conversion factor and pack size."
+       },
+       "allowed": {
+        "type": "boolean",
+        "description": "Whether the client may APPLY the two values above. `false` when the authoritative pricing preview applied at least one Pricing Rule (rate/discount rule, promotional scheme, Product Discount or free-item rule): a rule may change behaviour at a quantity threshold, so stepping is no longer a promise the storefront can keep. **`false` does NOT mean the product cannot be purchased** -- fall back to your ordinary quantity input. `moq` and `quantity_multiplier` are a PAIR governed by this one flag; they are still populated when it is false, for transparency, and must not be applied."
+       }
+      }
      },
      "uom": {
       "type": "string",

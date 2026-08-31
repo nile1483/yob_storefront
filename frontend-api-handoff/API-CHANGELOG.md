@@ -10,6 +10,95 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. MRP and quantity guidance on the resolved SKU (OpenAPI 3.12.0)
+
+**Additive.** Two new fields on `ProductDetail`, so they appear in
+`catalog.get_item` (simple product) and `catalog.resolve_variant`. No existing
+field changed meaning or value.
+
+```jsonc
+{"mrp": 1000,
+ "quantity_control": {"moq": 10, "quantity_multiplier": 6, "allowed": true}}
+```
+
+Both come from the **same Item Price row the rate came from** — the
+customer-specific row when one applies, the price-list row otherwise. Selecting
+another variant re-resolves them along with the price, so a variant switch needs
+no extra request.
+
+### `mrp` — informational only
+
+**OLD** — no MRP anywhere.
+
+**CURRENT** — `mrp` is the Maximum Retail Price on the resolved Item Price, in
+that Item Price's own currency. **Display only.**
+
+It is **not** a base price, rate, discount or total; no other field is derived
+from it; and **the backend computes no saving and no percentage** against it. If
+you want "You save ₹300", that is your calculation to make and own — the API
+deliberately does not supply one. It is not validated against the selling rate,
+so `mrp` **may be lower** than `rate`; render accordingly rather than assuming a
+discount. `null` when not configured.
+
+### `quantity_control` — guidance, never enforcement
+
+**This is the part to read carefully.** The backend applies none of it. Cart,
+checkout and Sales Order accept exactly the quantities they accepted before, and
+there is **no** "below MOQ" or "invalid step" error code — none was added, and
+a regression test exists specifically to keep it that way.
+
+* `moq` — the quantity your input **starts** at.
+* `quantity_multiplier` — the **step counted from that start**.
+
+```
+moq 10 + multiplier 6  ->  10, 16, 22, 28
+                       NOT 12, 18, 24
+                       NOT "must be divisible by 6"
+```
+
+* only `moq` → start there, step by your existing default.
+* only `quantity_multiplier` → start at your existing default, step by it.
+* neither → unchanged behaviour.
+
+**Apply either value only when `allowed` is `true`.**
+
+### `allowed` — and what `false` does NOT mean
+
+`false` means the authoritative pricing preview applied at least one Pricing Rule
+(rate/discount rule, promotional scheme, Product Discount, free-item rule). Such
+a rule can change behaviour at a quantity threshold, so "start at 10, step by 6"
+stops being a promise the backend can keep.
+
+**`allowed: false` does NOT mean the product cannot be purchased.** Fall back to
+your ordinary quantity input and let the buyer enter any quantity. Do not try to
+reverse-engineer the rule — the backend deliberately does not predict prices at
+hypothetical quantities.
+
+`moq` and `quantity_multiplier` are a **pair** under this one flag; there is no
+per-field state. Both stay populated when `allowed` is `false`, for transparency
+— they must simply not be applied.
+
+**`mrp` is independent of `allowed`** and is displayed whenever non-null, because
+it has no quantity behaviour and therefore no conflict:
+
+```jsonc
+{"rate": 700, "mrp": 1000,
+ "quantity_control": {"moq": 10, "quantity_multiplier": 5, "allowed": false}}
+```
+
+### Normalisation
+
+Blank, `0` and negative all normalise to `null` server-side for all three values.
+`null` is the only "not configured" state you need to handle.
+
+**FRONTEND ACTION** — none is forced; both fields can be ignored. To use them:
+render `mrp` when non-null, and drive the quantity stepper from `moq` /
+`quantity_multiplier` **only** when `allowed` is `true`.
+
+**No listing changes.** `get_items`, `ListingCard`, `ProductSuggestion` and
+`get_browse_categories` are untouched — these are buying-area facts and the
+catalogue payload stays light. Phase 28 contracts are unaffected.
+
 ## 0. An `all_products` destination type (OpenAPI 3.11.0)
 
 **Additive.** One new value in the `Destination.type` enum. No existing

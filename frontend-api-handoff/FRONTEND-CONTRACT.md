@@ -495,6 +495,56 @@ family**, never one per variant. Every card carries `has_variants` and `price_st
 ERPNext cannot price a template, and quoting one variant's rate would show a number
 no buyer is charged, so a family card deliberately carries no money.
 
+**MRP and quantity guidance (OpenAPI 3.12.0).** `catalog.get_item` (simple) and
+`catalog.resolve_variant` both carry two more resolved-SKU facts, taken from the
+**same Item Price row the rate came from**. Selecting another variant re-resolves
+them with the price, so no extra fetch is needed.
+
+```jsonc
+{"mrp": 1000,
+ "quantity_control": {"moq": 10, "quantity_multiplier": 6, "allowed": true}}
+```
+
+**`mrp` is display only.** It is not a base price, rate, discount or total,
+nothing else in the payload is derived from it, and the backend computes **no
+saving and no percentage** against it — if you want "You save ₹300", that is a
+frontend decision, not a value the API supplies. It is not validated against the
+selling rate, so it can legitimately be lower. `null` when not configured.
+
+**`quantity_control` is guidance, never enforcement.** The backend applies none
+of it: cart, checkout and Sales Order accept exactly the quantities they accepted
+before. Nothing returns a "below MOQ" or "bad step" error, and none exists.
+
+* `moq` — the quantity the input **starts** at.
+* `quantity_multiplier` — the **step from that start**. `moq: 10`,
+  `quantity_multiplier: 6` offers **10, 16, 22, 28** — *not* 12, 18, 24, and
+  *not* "must be divisible by 6".
+* only `moq` set → start there, step by your existing default.
+* only `quantity_multiplier` set → start at your existing default, step by it.
+* **apply either value only when `allowed` is `true`.**
+
+**`allowed: false` does not mean the product cannot be bought.** It means the
+authoritative pricing preview applied a Pricing Rule — a rate or discount rule, a
+promotional scheme, a Product Discount or a free-item rule — whose behaviour may
+change at a quantity threshold, so stepping is no longer a promise the backend
+can keep. Fall back to your ordinary quantity input and let the buyer type any
+quantity. Do **not** try to reverse-engineer the rule.
+
+`moq` and `quantity_multiplier` are a **pair** under that one flag. There is
+deliberately no per-field state. Both stay populated when `allowed` is `false`,
+for transparency — they must simply not be applied.
+
+**`mrp` is independent of `allowed`.** It has no quantity behaviour and therefore
+no conflict: display it whenever it is non-null, including alongside
+`allowed: false`.
+
+Zero and negative are normalised to `null` server-side for all three, so `null`
+is the only "not configured" value you need to handle.
+
+**Not on listing cards.** `get_items`, `ProductSuggestion` and
+`get_browse_categories` are unchanged — these are product-detail buying-area
+facts and the catalogue payload stays light.
+
 **Stock fields on `catalog.get_item`** — `is_stock_item`, `warehouse`,
 `actual_qty`. `actual_qty` is in **`stock_uom`, never converted to the selling
 unit** — price per Strip and availability in Nos are two different facts. It is
