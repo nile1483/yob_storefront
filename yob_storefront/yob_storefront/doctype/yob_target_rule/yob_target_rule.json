@@ -1,0 +1,320 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-26 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "rule_name",
+  "company",
+  "target_period",
+  "column_break_basic",
+  "enabled",
+  "customer_visible",
+  "description",
+  "section_break_report",
+  "report_start_date",
+  "column_break_report",
+  "report_end_date",
+  "section_break_scope",
+  "target_scope",
+  "column_break_scope",
+  "scope_item",
+  "scope_item_group",
+  "scope_brand",
+  "scope_value",
+  "section_break_eligibility",
+  "conditions",
+  "section_break_target",
+  "target_type",
+  "target_amount",
+  "currency",
+  "column_break_target",
+  "target_quantity",
+  "target_uom",
+  "section_break_incentive",
+  "incentive_type",
+  "incentive_amount",
+  "column_break_incentive",
+  "incentive_percentage",
+  "section_break_slabs",
+  "incentive_slabs",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "rule_name",
+   "fieldtype": "Data",
+   "label": "Rule Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "MANDATORY. Only this company's Sales Orders can ever count."
+  },
+  {
+   "fieldname": "target_period",
+   "fieldtype": "Link",
+   "label": "Target Period",
+   "options": "YOB Target Period",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Decides WHICH TRANSACTION DATES count."
+  },
+  {
+   "fieldname": "column_break_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "allow_on_submit": 1,
+   "description": "Operational switch. Editable after submission."
+  },
+  {
+   "fieldname": "customer_visible",
+   "fieldtype": "Check",
+   "label": "Customer Visible",
+   "default": "0",
+   "allow_on_submit": 1,
+   "description": "MASTER SAFETY FLAG ONLY. Off by default. It does not decide which page shows this target or for how long -- a future Storefront Block owns that."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "section_break_report",
+   "fieldtype": "Section Break",
+   "label": "Report Window",
+   "description": "WHEN RECALCULATION MAY RUN. These dates never change which transactions qualify -- the Target Period alone does that."
+  },
+  {
+   "fieldname": "report_start_date",
+   "fieldtype": "Date",
+   "label": "Report Start Date",
+   "reqd": 1,
+   "allow_on_submit": 1,
+   "description": "Scheduled calculation starts on this date. INCLUSIVE."
+  },
+  {
+   "fieldname": "column_break_report",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "report_end_date",
+   "fieldtype": "Date",
+   "label": "Report End Date",
+   "reqd": 1,
+   "allow_on_submit": 1,
+   "description": "Automatic recalculation stops after this date and the last result stands. INCLUSIVE."
+  },
+  {
+   "fieldname": "section_break_scope",
+   "fieldtype": "Section Break",
+   "label": "Target Scope"
+  },
+  {
+   "fieldname": "target_scope",
+   "fieldtype": "Select",
+   "label": "Target Scope",
+   "options": "\nItem\nItem Group\nBrand\nTotal Sales Order",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_scope",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "scope_item",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "depends_on": "eval:doc.target_scope=='Item'",
+   "description": "Required when Target Scope is Item."
+  },
+  {
+   "fieldname": "scope_item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group",
+   "depends_on": "eval:doc.target_scope=='Item Group'",
+   "description": "Required when Target Scope is Item Group. Exact match, no sub-groups."
+  },
+  {
+   "fieldname": "scope_brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Brand",
+   "depends_on": "eval:doc.target_scope=='Brand'",
+   "description": "Required when Target Scope is Brand."
+  },
+  {
+   "fieldname": "scope_value",
+   "fieldtype": "Data",
+   "label": "Scope Value",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Server-derived from whichever typed field the scope selects, and empty for Total Sales Order. This is what the achievement query reads."
+  },
+  {
+   "fieldname": "section_break_eligibility",
+   "fieldtype": "Section Break",
+   "label": "Customer Eligibility",
+   "description": "OR semantics: a customer qualifies by matching ANY row. At least one row is required."
+  },
+  {
+   "fieldname": "conditions",
+   "fieldtype": "Table",
+   "label": "Conditions",
+   "options": "YOB Target Rule Condition",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_target",
+   "fieldtype": "Section Break",
+   "label": "Target"
+  },
+  {
+   "fieldname": "target_type",
+   "fieldtype": "Select",
+   "label": "Target Type",
+   "options": "\nAmount\nQuantity",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "target_amount",
+   "fieldtype": "Currency",
+   "label": "Target Amount",
+   "options": "currency",
+   "non_negative": 1,
+   "depends_on": "eval:doc.target_type=='Amount'"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1,
+   "description": "Derived from the Company's default currency. Achievement is summed in that base currency, so an arbitrary currency here would be arithmetic nonsense."
+  },
+  {
+   "fieldname": "column_break_target",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_quantity",
+   "fieldtype": "Float",
+   "label": "Target Quantity",
+   "non_negative": 1,
+   "depends_on": "eval:doc.target_type=='Quantity'"
+  },
+  {
+   "fieldname": "target_uom",
+   "fieldtype": "Link",
+   "label": "Target UOM",
+   "options": "UOM",
+   "depends_on": "eval:doc.target_type=='Quantity'",
+   "description": "Every qualifying row is converted into THIS unit through ERPNext's own conversion data before being added up."
+  },
+  {
+   "fieldname": "section_break_incentive",
+   "fieldtype": "Section Break",
+   "label": "Incentive"
+  },
+  {
+   "fieldname": "incentive_type",
+   "fieldtype": "Select",
+   "label": "Incentive Type",
+   "options": "\nFixed Amount\nPercentage\nSlab Fixed Amount\nSlab Percentage",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "incentive_amount",
+   "fieldtype": "Currency",
+   "label": "Incentive Amount",
+   "options": "currency",
+   "non_negative": 1,
+   "depends_on": "eval:doc.incentive_type=='Fixed Amount'"
+  },
+  {
+   "fieldname": "column_break_incentive",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "incentive_percentage",
+   "fieldtype": "Percent",
+   "label": "Incentive %",
+   "non_negative": 1,
+   "depends_on": "eval:doc.incentive_type=='Percentage'"
+  },
+  {
+   "fieldname": "section_break_slabs",
+   "fieldtype": "Section Break",
+   "depends_on": "eval:['Slab Fixed Amount','Slab Percentage'].includes(doc.incentive_type)"
+  },
+  {
+   "fieldname": "incentive_slabs",
+   "fieldtype": "Table",
+   "label": "Incentive Slabs",
+   "options": "YOB Target Rule Incentive Slab",
+   "description": "ONE applicable slab is used -- the model is not progressive."
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "YOB Target Rule",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-26 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Target Rule",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 0,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  }
+ ],
+ "autoname": "field:rule_name",
+ "naming_rule": "By fieldname",
+ "is_submittable": 1,
+ "title_field": "rule_name",
+ "track_changes": 1
+}

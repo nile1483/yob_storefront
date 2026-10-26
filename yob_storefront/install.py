@@ -429,6 +429,30 @@ def ensure_custom_fields():
     )
 
 
+def ensure_target_constraints():
+    """The composite UNIQUE index behind one Customer Target per customer+rule.
+
+    Frappe has no DocType-level composite unique declaration, so the constraint
+    is applied through its own `db.add_unique()` -- which checks
+    information_schema first and is therefore safe on every migrate.
+
+    It is a real database constraint rather than a lookup-then-insert because
+    two scheduler workers reaching the same customer/rule pair would both pass an
+    existence check and both insert. The index makes one of them fail, and
+    `target_service.upsert_customer_target()` turns that failure into the update
+    it meant to be.
+    """
+
+    if not frappe.db.table_exists("YOB Customer Target"):
+        # First install: the table arrives later in the same migrate, and the
+        # next one applies the constraint.
+        return
+
+    frappe.db.add_unique(
+        "YOB Customer Target", ["customer", "target_rule"],
+        constraint_name="unique_customer_target_rule")
+
+
 def after_migrate():
     """Re-assert the YOB-managed role and its DocPerms on every migrate.
 
@@ -440,6 +464,7 @@ def after_migrate():
     ensure_role_and_permissions()
     ensure_custom_fields()
     ensure_payment_gateways()
+    ensure_target_constraints()
 
 
 def _ensure_storefront_application():

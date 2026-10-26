@@ -1,0 +1,309 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-26 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "customer",
+  "target_rule",
+  "target_period",
+  "company",
+  "column_break_identity",
+  "status",
+  "reward_status",
+  "last_calculated_on",
+  "section_break_snapshot",
+  "target_scope",
+  "scope_value",
+  "target_type",
+  "column_break_snapshot",
+  "target_amount",
+  "currency",
+  "target_quantity",
+  "target_uom",
+  "section_break_achievement",
+  "achieved_amount",
+  "achieved_quantity",
+  "column_break_achievement",
+  "achievement_percentage",
+  "section_break_incentive",
+  "incentive_type",
+  "current_slab",
+  "applied_incentive_amount",
+  "applied_incentive_percentage",
+  "column_break_incentive",
+  "eligible_incentive",
+  "final_incentive",
+  "section_break_diagnostics",
+  "calculation_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "Customer",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "target_rule",
+   "fieldtype": "Link",
+   "label": "Target Rule",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "YOB Target Rule",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "target_period",
+   "fieldtype": "Link",
+   "label": "Target Period",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "YOB Target Period",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "Company",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "no_copy": 1,
+   "options": "\nNot Started\nIn Progress\nAchieved\nExpired\nCompleted",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Calculated by the engine. An administrator may set it to Completed to record a settled target; recalculation then leaves it alone. No other field on this document is editable."
+  },
+  {
+   "fieldname": "reward_status",
+   "fieldtype": "Select",
+   "label": "Reward Status",
+   "no_copy": 1,
+   "options": "\nPending\nCompleted",
+   "default": "Pending",
+   "in_standard_filter": 1,
+   "description": "Administrative. Recalculation never changes an existing value."
+  },
+  {
+   "fieldname": "last_calculated_on",
+   "fieldtype": "Datetime",
+   "label": "Last Calculated On",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "section_break_snapshot",
+   "fieldtype": "Section Break",
+   "label": "Target Snapshot",
+   "description": "Copied from the rule at calculation time so the number can be understood without re-reading a rule that may since have been amended."
+  },
+  {
+   "fieldname": "target_scope",
+   "fieldtype": "Data",
+   "label": "Target Scope",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "scope_value",
+   "fieldtype": "Data",
+   "label": "Scope Value",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "target_type",
+   "fieldtype": "Data",
+   "label": "Target Type",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_snapshot",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_amount",
+   "fieldtype": "Currency",
+   "label": "Target Amount",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "currency"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "Currency"
+  },
+  {
+   "fieldname": "target_quantity",
+   "fieldtype": "Float",
+   "label": "Target Quantity",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "target_uom",
+   "fieldtype": "Link",
+   "label": "Target UOM",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "UOM"
+  },
+  {
+   "fieldname": "section_break_achievement",
+   "fieldtype": "Section Break",
+   "label": "Achievement"
+  },
+  {
+   "fieldname": "achieved_amount",
+   "fieldtype": "Currency",
+   "label": "Achieved Amount",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "currency",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "achieved_quantity",
+   "fieldtype": "Float",
+   "label": "Achieved Quantity",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "column_break_achievement",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "achievement_percentage",
+   "fieldtype": "Percent",
+   "label": "Achievement %",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_break_incentive",
+   "fieldtype": "Section Break",
+   "label": "Incentive"
+  },
+  {
+   "fieldname": "incentive_type",
+   "fieldtype": "Data",
+   "label": "Incentive Type",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "current_slab",
+   "fieldtype": "Data",
+   "label": "Current Slab",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "applied_incentive_amount",
+   "fieldtype": "Currency",
+   "label": "Applied Incentive Amount",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "currency"
+  },
+  {
+   "fieldname": "applied_incentive_percentage",
+   "fieldtype": "Percent",
+   "label": "Applied Incentive %",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "column_break_incentive",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "eligible_incentive",
+   "fieldtype": "Currency",
+   "label": "Eligible Incentive",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "currency"
+  },
+  {
+   "fieldname": "final_incentive",
+   "fieldtype": "Currency",
+   "label": "Final Incentive",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "currency"
+  },
+  {
+   "fieldname": "section_break_diagnostics",
+   "fieldtype": "Section Break",
+   "label": "Diagnostics"
+  },
+  {
+   "fieldname": "calculation_error",
+   "fieldtype": "Small Text",
+   "label": "Calculation Error",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Set when a calculation could not be completed safely -- for example a qualifying row that cannot be converted into the target UOM. The previous figures are left untouched rather than replaced by a false total."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-26 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Customer Target",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 0,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 0,
+   "delete": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  }
+ ],
+ "autoname": "hash",
+ "naming_rule": "Expression",
+ "track_changes": 1,
+ "in_create": 1
+}

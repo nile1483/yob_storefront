@@ -271,6 +271,20 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
+# Target Management recalculation (Phase 30A).
+#
+# Daily, because a target is a business-day concept: nothing about an achievement
+# changes faster than the Sales Orders behind it, and a rule only recalculates at
+# all while the calculation date sits inside its Report Window.
+#
+# Deliberately NOT triggered by a storefront page view. A buyer opening a page
+# must not run an aggregation over every Sales Order in a period.
+scheduler_events = {
+    "daily": [
+        "yob_storefront.services.target_service.recalculate_due_targets",
+    ],
+}
+
 # scheduler_events = {
 # 	"all": [
 # 		"yob_storefront.tasks.all"

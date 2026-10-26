@@ -1,0 +1,72 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-26 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "from_achievement",
+  "to_achievement",
+  "incentive_amount",
+  "incentive_percentage",
+  "max_incentive"
+ ],
+ "fields": [
+  {
+   "fieldname": "from_achievement",
+   "fieldtype": "Percent",
+   "label": "From Achievement %",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "INCLUSIVE lower bound."
+  },
+  {
+   "fieldname": "to_achievement",
+   "fieldtype": "Percent",
+   "label": "To Achievement %",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "INCLUSIVE upper bound."
+  },
+  {
+   "fieldname": "incentive_amount",
+   "fieldtype": "Currency",
+   "label": "Incentive Amount",
+   "in_list_view": 1,
+   "columns": 2,
+   "non_negative": 1
+  },
+  {
+   "fieldname": "incentive_percentage",
+   "fieldtype": "Percent",
+   "label": "Incentive %",
+   "in_list_view": 1,
+   "columns": 2,
+   "non_negative": 1
+  },
+  {
+   "fieldname": "max_incentive",
+   "fieldtype": "Currency",
+   "label": "Max Incentive",
+   "in_list_view": 1,
+   "columns": 2,
+   "non_negative": 1,
+   "description": "Caps a percentage slab. 0 means uncapped."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-26 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Target Rule Incentive Slab",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "permissions": []
+}
