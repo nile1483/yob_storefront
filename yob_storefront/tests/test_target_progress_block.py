@@ -645,12 +645,45 @@ class CardDataCase(BlockBase):
 
         self.assertEqual(card["target_type"], "Quantity")
         self.assertEqual(card["uom"], self.stock_uom)
+        # A Quantity target still carries a currency. Its incentive is money -- a
+        # percentage incentive applies to the achieved AMOUNT -- so a card measured
+        # in units still needs something to label the reward with. The contract
+        # marks `currency` required on every entry; this is the half that was
+        # previously only true by accident.
+        self.assertEqual(card["currency"], self.currency)
         self.assertEqual(flt(card["target_quantity"]), 50.0)
         # 3 Box x 10 = 30, converted by Phase 30A, not here.
         self.assertEqual(flt(card["achieved_quantity"]), 30.0)
         self.assertEqual(flt(card["remaining_quantity"]), 20.0)
         self.assertIsNone(card["target_amount"])
         self.assertIsNone(card["remaining_amount"])
+
+    def test_a_capped_slab_incentive_reports_the_capped_figure(self):
+        """`max_incentive` bites, and the published reward is the capped one.
+
+        The customer-facing field is `final_incentive`. It and `eligible_incentive`
+        are the same figure in this phase by design -- they diverge only once a
+        settlement workflow exists -- so what is proven here is that BOTH report
+        the post-cap value and neither leaks the larger uncapped calculation.
+        """
+
+        self.make_sales_order(self.customer, date="2026-06-10",
+                              items=[{"item_code": self.item, "qty": 20, "rate": 100}])
+
+        rule = self.make_rule("_T30B-CAP", period=self.period,
+                              customers=[self.customer], target_amount=1000,
+                              incentive_type="Slab Percentage",
+                              slabs=[{"from_achievement": 100, "to_achievement": 1000,
+                                      "incentive_percentage": 10, "max_incentive": 75}])
+
+        target_service.recalculate_due_targets("2026-06-25")
+        card = self.card(rule)
+
+        # 10% of 2,000 achieved is 200; the slab caps it at 75.
+        self.assertEqual(flt(card["achieved_amount"]), 2000.0)
+        self.assertEqual(flt(card["final_incentive"]), 75.0)
+        self.assertNotEqual(flt(card["final_incentive"]), 200.0)
+        self.assertEqual(flt(card["eligible_incentive"]), 75.0)
 
     def test_achievement_above_one_hundred_is_not_capped(self):
         """125% publishes 125. A progress bar may cap; the backend must not."""

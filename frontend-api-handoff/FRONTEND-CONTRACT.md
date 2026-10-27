@@ -197,6 +197,19 @@ are all already decided. There is nothing left to work out on the client.
 **`achievement_percentage` is NOT capped at 100.** 125% returns `125`. Cap the
 *bar* if you like; do not cap the number.
 
+**`currency` is on every entry, both target types.** It is the company's base
+currency, derived and never chosen — achievement is summed from
+`Sales Order Item.base_net_amount`, which ERPNext stores in base currency. A
+Quantity target is counted in `uom` and still carries a currency, because its
+incentive is money: a percentage incentive applies to the achieved *amount*.
+Format the reward with this, not with a client-side default.
+
+**Show `final_incentive`, not `eligible_incentive`.** `final_incentive` is the
+authoritative post-slab, post-cap reward. The two are identical today and exist
+separately so a later settlement workflow can reduce one against the other
+without a contract change; a client showing the eligible figure would then
+display a reward nobody receives.
+
 **`remaining_amount` / `remaining_quantity` are `max(target - achieved, 0)`** and
 never negative. Only the one matching `target_type` is populated; the other is
 `null`. `achieved_amount` is present for **both** types, because a percentage

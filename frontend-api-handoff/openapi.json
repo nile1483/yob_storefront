@@ -1755,7 +1755,8 @@
      "target_type",
      "achievement_percentage",
      "status",
-     "next_milestone"
+     "next_milestone",
+     "currency"
     ],
     "properties": {
      "customer_target": {
@@ -1804,13 +1805,13 @@
      },
      "currency": {
       "type": "string",
-      "nullable": true,
-      "description": "Amount targets only; the company's base currency"
+      "nullable": false,
+      "description": "The company's base currency, present on EVERY entry -- both target types. A Quantity target is measured in `uom`, but its incentive is still money (a percentage incentive applies to the achieved AMOUNT), so every card has a monetary figure to label. Derived from the Company and never chosen: achievement is summed from `Sales Order Item.base_net_amount`, which ERPNext stores in base currency, so no other currency could honestly label it. Format `final_incentive` with THIS, not with a client-side default."
      },
      "uom": {
       "type": "string",
       "nullable": true,
-      "description": "Quantity targets only; achieved quantity is already converted into it"
+      "description": "Quantity targets only; achieved quantity is already converted into it. `null` on an Amount target. Unrelated to `currency`, which every entry carries."
      },
      "target_amount": {
       "type": "number",
@@ -1861,10 +1862,12 @@
       "nullable": true
      },
      "eligible_incentive": {
-      "type": "number"
+      "type": "number",
+      "description": "The calculated figure before any settlement reduction. Equal to `final_incentive` today. Retained for administrative and future use; **not** the value to show a buyer."
      },
      "final_incentive": {
-      "type": "number"
+      "type": "number",
+      "description": "**The customer-facing reward.** Authoritative post-slab, post-cap value -- show THIS one. Identical to `eligible_incentive` today; the two exist separately so a later settlement workflow can reduce one against the other without a contract change, and a client that showed the eligible figure would then display a reward nobody receives."
      },
      "current_slab": {
       "type": "string",

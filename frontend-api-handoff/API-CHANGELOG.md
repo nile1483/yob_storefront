@@ -37,6 +37,15 @@ Two values need stating precisely:
   field matching `target_type` is populated. `achieved_amount` is present for
   both types, because a percentage incentive applies to it.
 
+* **`currency` is present on every entry**, both target types. It is the company's
+  base currency, derived from the Company rather than chosen. A Quantity target is
+  counted in `uom` and still carries one, because a percentage incentive applies to
+  the achieved *amount* — the reward is money whichever way the target is measured.
+  Format it with this, never with a client-side currency default.
+* **`final_incentive` is the customer-facing reward.** `eligible_incentive` is the
+  pre-settlement figure, identical today, retained for administrative and future
+  use. Show `final_incentive`.
+
 `next_milestone` is `null` when the incentive is not slab-based or the customer is
 past the highest slab — absence, rather than a milestone that does not exist.
 

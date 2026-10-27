@@ -102,8 +102,8 @@ def _project_row(row, customer, on):
     target = frappe.db.get_value(
         "YOB Customer Target",
         {"customer": customer, "target_rule": rule.name},
-        ["name", "target_type", "target_amount", "target_quantity", "currency",
-         "target_uom", "achieved_amount", "achieved_quantity",
+        ["name", "company", "target_type", "target_amount", "target_quantity",
+         "currency", "target_uom", "achieved_amount", "achieved_quantity",
          "achievement_percentage", "status", "incentive_type", "current_slab",
          "eligible_incentive", "final_incentive", "last_calculated_on",
          "target_scope", "scope_value", "calculation_error"],
@@ -154,7 +154,15 @@ def _card(rule, target):
         "scope_value": target.scope_value or None,
 
         "target_type": target.target_type,
-        "currency": target.currency or None,
+
+        # Present on EVERY entry, both target types. A Quantity target is measured
+        # in `uom`, but its incentive is still money -- a percentage incentive
+        # applies to the achieved AMOUNT -- so a card has a monetary figure to
+        # label whichever way the target is counted. `set_currency_from_company`
+        # already stamps every rule with the company's base currency and the
+        # snapshot copies it; this falls back to the company only if a row somehow
+        # reached here without one, so the contract's promise holds unconditionally.
+        "currency": target.currency or _company_currency(target.company),
         "uom": target.target_uom or None,
 
         "target_amount": flt(target.target_amount) if is_amount else None,
@@ -185,6 +193,20 @@ def _card(rule, target):
         rule.name, target, target_value, achieved_value)
 
     return card
+
+
+def _company_currency(company):
+    """The company's base currency, or None when there is no company to ask.
+
+    A fallback, not the normal path: achievement is summed from
+    `Sales Order Item.base_net_amount`, which ERPNext stores in the company's base
+    currency, so that is the only currency a target figure can honestly carry.
+    """
+
+    if not company:
+        return None
+
+    return frappe.get_cached_value("Company", company, "default_currency") or None
 
 
 def _next_milestone(rule_name, target, target_value, achieved_value):
