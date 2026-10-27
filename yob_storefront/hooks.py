@@ -51,6 +51,10 @@ app_include_js = "/assets/yob_storefront/js/yob.js"
 # not arrive with a fresh install unless someone remembers the fixture, and it
 # cannot be reviewed in a pull request. These files migrate with the app.
 doctype_js = {
+    # Customer gains a Target Management entry point (Phase 31A). A toolbar
+    # button rather than `override_doctype_dashboards`, which would replace
+    # ERPNext's whole Customer connections panel to add one YOB link.
+    "Customer": "public/js/customer_target_management.js",
     # A list: Frappe accumulates doctype_js values and loads every file, so the
     # filter grid helper and the Product Content launcher stay separate concerns.
     "Item": [

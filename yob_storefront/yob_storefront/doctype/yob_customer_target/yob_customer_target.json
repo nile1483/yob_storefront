@@ -60,7 +60,8 @@
    "options": "YOB Target Rule",
    "reqd": 1,
    "in_list_view": 1,
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "search_index": 1
   },
   {
    "fieldname": "target_period",
@@ -69,7 +70,8 @@
    "read_only": 1,
    "no_copy": 1,
    "options": "YOB Target Period",
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "search_index": 1
   },
   {
    "fieldname": "company",
@@ -78,7 +80,8 @@
    "read_only": 1,
    "no_copy": 1,
    "options": "Company",
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "search_index": 1
   },
   {
    "fieldname": "column_break_identity",
@@ -92,7 +95,8 @@
    "options": "\nNot Started\nIn Progress\nAchieved\nExpired\nCompleted",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "description": "Calculated by the engine. An administrator may set it to Completed to record a settled target; recalculation then leaves it alone. No other field on this document is editable."
+   "description": "Calculated by the engine. An administrator may set it to Completed to record a settled target; recalculation then leaves it alone. No other field on this document is editable.",
+   "search_index": 1
   },
   {
    "fieldname": "reward_status",

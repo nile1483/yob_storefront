@@ -389,6 +389,77 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Section Break",
+   "label": "Target Management",
+   "icon": "target"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "label": "Target Periods",
+   "link_to": "YOB Target Period",
+   "icon": "calendar"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "label": "Target Rules",
+   "link_to": "YOB Target Rule",
+   "icon": "list"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "label": "Customer Targets",
+   "link_to": "YOB Customer Target",
+   "icon": "layout-dashboard"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "label": "Customer Target Report",
+   "link_to": "YOB Customer Target Report",
+   "icon": "file-text"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "label": "Target Management Dashboard",
+   "link_to": "YOB Target Management Dashboard",
+   "icon": "bar-chart"
   }
  ],
  "modified": "2026-08-29 12:00:00.000000",
