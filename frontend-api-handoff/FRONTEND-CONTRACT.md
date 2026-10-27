@@ -175,6 +175,51 @@ changes** — a cursor replayed under a different selection answers
 Switch on `type` — never on which nullable fields happen to be set. Slides and
 cards arrive in the merchant's order; do not re-sort.
 
+**`target_progress` (OpenAPI 3.13.0)** carries `targets` — this customer's progress
+against the Target Rules *that block* exposes:
+
+```jsonc
+{"type":"target_progress","targets":[
+  {"customer_target":"a1b2c3","target_rule":"June Target","title":"June Target",
+   "target_period_start":"2026-06-01","target_period_end":"2026-06-25",
+   "target_type":"Amount","currency":"INR",
+   "target_amount":1000,"achieved_amount":1250,
+   "achievement_percentage":125,"remaining_amount":0,
+   "status":"Achieved","incentive_type":"Slab Percentage",
+   "eligible_incentive":25,"final_incentive":25,"current_slab":"100% - 150%",
+   "next_milestone":null,"last_calculated_on":"2026-07-01 02:00:00"}]}
+```
+
+**Render it; do not compute it.** Eligibility, achievement, UOM conversion,
+remaining value, incentive, current slab, next milestone, status and visibility
+are all already decided. There is nothing left to work out on the client.
+
+**`achievement_percentage` is NOT capped at 100.** 125% returns `125`. Cap the
+*bar* if you like; do not cap the number.
+
+**`remaining_amount` / `remaining_quantity` are `max(target - achieved, 0)`** and
+never negative. Only the one matching `target_type` is populated; the other is
+`null`. `achieved_amount` is present for **both** types, because a percentage
+incentive applies to it.
+
+**`next_milestone` is already worked out** — the next slab's achievement % and how
+much more is needed. It is `null` when the incentive is not slab-based or the
+customer is past the top slab. Never parse a slab table.
+
+**Three different date ranges exist, and `targets` depends on all three being kept
+apart.** The Target Period says which sales counted; the Report Window says when
+the backend recalculates; and the block's own Show From / Show Until say when this
+card appears. **A target whose sales period closed is still shown** while its
+display window is open — so do not hide a card because `target_period_end` has
+passed, and do not infer visibility at all. If it is in `targets`, show it.
+
+**An empty `targets` is normal**, not an error: the block is configured but
+nothing applies to this customer today. No reason is given, by design.
+
+**There is no targets endpoint.** The only way to read target progress is a block,
+and the customer comes from the session — no call accepts a customer or a list of
+Target Rules.
+
 **Every block carries `section_style`** — one of `default`, `muted`,
 `brand_soft`, `accent`, `dark`. It is the semantic band the block sits in, and it
 comes from the **placement**, not from the Block: the same Block can be `muted`

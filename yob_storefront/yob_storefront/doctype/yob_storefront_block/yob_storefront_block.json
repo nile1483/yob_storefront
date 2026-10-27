@@ -46,7 +46,9 @@
   "column_break_destination",
   "link_item",
   "link_external_url",
-  "open_in_new_tab"
+  "open_in_new_tab",
+  "target_section",
+  "target_rows"
  ],
  "fields": [
   {
@@ -66,7 +68,7 @@
    "label": "Block Type",
    "reqd": 1,
    "in_list_view": 1,
-   "options": "\nImage Banner\nRich Text\nBanner Carousel\nProduct Grid\nPromo Grid"
+   "options": "\nImage Banner\nRich Text\nBanner Carousel\nProduct Grid\nPromo Grid\nTarget Progress"
   },
   {
    "fieldname": "enabled",
@@ -321,6 +323,21 @@
    "label": "Open in New Tab",
    "default": "0",
    "depends_on": "eval:(doc.block_type==\"Image Banner\") && doc.link_type==\"External URL\""
+  },
+  {
+   "fieldname": "target_section",
+   "fieldtype": "Section Break",
+   "label": "Target Progress",
+   "depends_on": "eval:doc.block_type=='Target Progress'",
+   "description": "Which targets this block exposes, and when. A customer sees ONLY the rules listed here, only inside their display dates, and only where they have a calculated target of their own."
+  },
+  {
+   "fieldname": "target_rows",
+   "fieldtype": "Table",
+   "label": "Targets",
+   "options": "YOB Storefront Block Target Row",
+   "depends_on": "eval:doc.block_type=='Target Progress'",
+   "description": "Row order is the display order."
   }
  ],
  "index_web_pages_for_search": 0,

@@ -1,0 +1,55 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-26 18:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "target_rule",
+  "show_from",
+  "show_until"
+ ],
+ "fields": [
+  {
+   "fieldname": "target_rule",
+   "fieldtype": "Link",
+   "label": "Target Rule",
+   "options": "YOB Target Rule",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 4,
+   "description": "Must be submitted and marked Customer Visible."
+  },
+  {
+   "fieldname": "show_from",
+   "fieldtype": "Date",
+   "label": "Show From",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3,
+   "description": "STOREFRONT DISPLAY date, inclusive. Unrelated to the Target Period (which sales count) and to the Report Window (when recalculation runs)."
+  },
+  {
+   "fieldname": "show_until",
+   "fieldtype": "Date",
+   "label": "Show Until",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3,
+   "description": "STOREFRONT DISPLAY date, inclusive. After it the block stops exposing this target; the target itself is unaffected."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-26 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "yob_storefront",
+ "name": "YOB Storefront Block Target Row",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "permissions": []
+}

@@ -1007,12 +1007,26 @@ class DomainSeparationCase(MerchandisingBase):
         self.assertTrue(product.istable, "the product block is a child row")
         self.assertFalse(cms.istable, "the CMS block is a reusable master")
 
-    def test_the_cms_block_types_are_unchanged(self):
+    def test_the_cms_block_types_are_the_cms_ones(self):
+        """The CMS union is the CMS union -- product content is not in it.
+
+        Named for what it guards rather than for being frozen: Phase 30B added
+        `Target Progress`, a sixth GENERIC content type. What must never happen is
+        a PRODUCT CONTENT type appearing here, which is what the assertion below
+        actually checks.
+        """
+
         options = frappe.get_meta("YOB Storefront Block").get_field("block_type").options
         cms_types = {line for line in (options or "").split("\n") if line}
 
         self.assertEqual(cms_types, {"Image Banner", "Rich Text", "Banner Carousel",
-                                     "Product Grid", "Promo Grid"})
+                                     "Product Grid", "Promo Grid",
+                                     "Target Progress"})
+
+        for product_only in ("Key Value", "Table", "Download", "Video",
+                             "Product Content"):
+            self.assertNotIn(product_only, cms_types,
+                             "a product-content type leaked into the CMS union")
 
     def test_a_product_section_has_no_page_or_route_concept(self):
         fields = {f.fieldname for f in frappe.get_meta(SECTION).fields}

@@ -10,6 +10,67 @@ Where nothing changed, nothing is listed.
 
 ---
 
+## 0. A `target_progress` content block (OpenAPI 3.13.0)
+
+**Additive.** A sixth `ContentBlock` type. Nothing existing changed: the five
+current types, their fields, `section_style` and `content_width` are untouched.
+
+```jsonc
+{"type":"target_progress","targets":[ …TargetProgressEntry… ]}
+```
+
+It arrives through the block mechanisms you already consume — `cms.get_page` and
+`cms.get_route_content` — so switching on `type` is all that is new.
+
+### Everything is already resolved
+
+`TargetProgressEntry` carries the target, the achievement, the remaining value,
+the status, the incentive, the current slab and the next milestone. The client
+performs **no** eligibility, achievement, UOM, remaining, incentive, slab,
+milestone, status or visibility logic.
+
+Two values need stating precisely:
+
+* **`achievement_percentage` is NOT capped.** 125% achievement returns `125`. A
+  progress bar may stop at 100; the number must not.
+* **`remaining_*` is `max(target - achieved, 0)`** — never negative. Only the
+  field matching `target_type` is populated. `achieved_amount` is present for
+  both types, because a percentage incentive applies to it.
+
+`next_milestone` is `null` when the incentive is not slab-based or the customer is
+past the highest slab — absence, rather than a milestone that does not exist.
+
+### The merchant decides which targets appear, and when
+
+A customer may have many targets; a block exposes only the Target Rules it lists,
+only inside each row's **Show From / Show Until**, and only where that customer
+has a calculated target. **Do not filter `targets` yourself** — what you receive
+is already the answer.
+
+**Three date ranges, deliberately separate:**
+
+```
+Target Period     which sales counted        -> target_period_start/end
+Report Window     when the backend recalcs   -> not published, not your concern
+Show From/Until   when this card appears     -> applied server-side
+```
+
+**A target whose sales period has closed is still displayed** while its display
+window is open. Do not hide a card because `target_period_end` has passed.
+
+An empty `targets` is an ordinary answer, not an error, and no reason is supplied.
+
+### No new endpoint
+
+There is deliberately none. The only path to target progress is a block, the
+customer comes from the authenticated session, and nothing accepts a customer or
+a list of Target Rules — so a browser cannot read another party's targets or widen
+what the merchant configured.
+
+**FRONTEND ACTION** — none is forced; an unknown `type` can be skipped as before.
+To use it, handle `target_progress` and render `targets`.
+
+
 ## 0. MRP and quantity guidance on the resolved SKU (OpenAPI 3.12.0)
 
 **Additive.** Two new fields on `ProductDetail`, so they appear in

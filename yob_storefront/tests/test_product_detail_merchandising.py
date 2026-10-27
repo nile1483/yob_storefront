@@ -1049,14 +1049,23 @@ class RegressionCase(DetailBase):
             self.assertNotIn("gallery", row)
             self.assertNotIn("sections", row)
 
-    def test_the_cms_block_union_is_untouched(self):
-        """Phase 25 generic content keeps its own five types."""
+    def test_the_cms_block_union_holds_only_generic_content_types(self):
+        """Generic content keeps its own union; product content is never in it.
+
+        Phase 30B added `Target Progress` as a sixth GENERIC type, which is a
+        legitimate growth of this union. The invariant is that no PRODUCT CONTENT
+        type ever joins it.
+        """
 
         options = frappe.get_meta("YOB Storefront Block").get_field("block_type").options
         cms_types = {line for line in (options or "").split("\n") if line}
 
         self.assertEqual(cms_types, {"Image Banner", "Rich Text", "Banner Carousel",
-                                     "Product Grid", "Promo Grid"})
+                                     "Product Grid", "Promo Grid",
+                                     "Target Progress"})
+
+        for product_only in ("Key Value", "Table", "Download", "Video"):
+            self.assertNotIn(product_only, cms_types)
 
     def test_the_two_block_unions_do_not_overlap_in_runtime_types(self):
         from yob_storefront.services.content_service import BLOCK_TYPES as CMS_TYPES
@@ -1066,7 +1075,7 @@ class RegressionCase(DetailBase):
 
         self.assertEqual(cms_runtime,
                          {"image_banner", "rich_text", "banner_carousel",
-                          "product_grid", "promo_grid"})
+                          "product_grid", "promo_grid", "target_progress"})
         self.assertEqual(product_runtime,
                          {"rich_text", "key_value", "table", "image",
                           "download", "video"})
@@ -1204,7 +1213,7 @@ class PublishedContractCase(DetailBase):
 
         self.assertNotEqual(cms, product)
         self.assertEqual(cms, {"image_banner", "rich_text", "banner_carousel",
-                               "product_grid", "promo_grid"})
+                               "product_grid", "promo_grid", "target_progress"})
 
     def test_the_cms_block_contract_is_unchanged(self):
         cb = self.schemas()["ContentBlock"]

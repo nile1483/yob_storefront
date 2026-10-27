@@ -6,6 +6,7 @@ WHAT A CLIENT RECEIVES
 Every block carries a machine `type` and ONLY the fields that type owns:
 
     image_banner · rich_text · banner_carousel · product_grid · promo_grid
+    target_progress
 
 No client should ever infer a block's kind from which nullable fields happen to
 be populated, and no stale field from a previous type appears -- Phase 25B clears
@@ -39,6 +40,18 @@ evaluation and no variant logic in this file, and there must never be.
 That also means grid output is CUSTOMER-SPECIFIC: it is priced through
 `SellingContext` against the buyer's own price list. A fully hydrated page must
 therefore never be cached across customers. See `docs/context.md`.
+
+TARGET PROGRESS IS NOT A TARGET ENGINE EITHER (Phase 30B)
+---------------------------------------------------------
+A Target Progress block stores WHICH Target Rules a surface exposes and BETWEEN
+WHICH DISPLAY DATES. Answering it is `target_progress.project_target_progress()`,
+which READS the figures Phase 30A's scheduled job already stored. No achievement
+is computed here, no UOM converted, no Sales Order queried, and no Target Rule
+written. Opening a page must never trigger a recalculation.
+
+Its output is customer-specific for a second reason: a block lists rules, and
+which of them produce a card depends on whose targets exist. The no-caching rule
+above therefore covers it too.
 """
 
 import frappe
@@ -54,6 +67,7 @@ BLOCK_TYPES = {
     "Banner Carousel": "banner_carousel",
     "Product Grid": "product_grid",
     "Promo Grid": "promo_grid",
+    "Target Progress": "target_progress",
 }
 
 #: Grid sort label -> the listing service's own sort mode. Price sorting is absent
@@ -239,12 +253,30 @@ def _product_grid(block, customer_doc):
     return payload
 
 
+def _target_progress(block, customer_doc):
+    """The configured targets, resolved for THIS buyer (Phase 30B).
+
+    Delegated whole, for the same reason a Product Grid delegates to
+    `list_items()`: the figures belong to Target Management and this file must
+    not learn how an achievement is computed. Nothing is recalculated -- the
+    service reads what Phase 30A's scheduled job already stored.
+
+    `customer_doc` arrives from `get_storefront_customer(auth_context)` by way of
+    `get_page` / `get_route_content`, so the buyer cannot be named by the request.
+    """
+
+    from yob_storefront.services.target_progress import project_target_progress
+
+    return project_target_progress(block, customer_doc)
+
+
 PROJECTORS = {
     "image_banner": _image_banner,
     "rich_text": _rich_text,
     "banner_carousel": _banner_carousel,
     "product_grid": _product_grid,
     "promo_grid": _promo_grid,
+    "target_progress": _target_progress,
 }
 
 

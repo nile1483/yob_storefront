@@ -25,6 +25,7 @@ import unittest
 from unittest.mock import patch
 
 import frappe
+from frappe.utils import add_days, today
 
 CUSTOMER = "YOB Demo Buyer"
 SEED_ITEM = "YOB-BOLT-M10"
@@ -1505,8 +1506,43 @@ class PublishedBlockShapeCase(RuntimeBase):
             self.skipTest("no published OpenAPI document in this checkout")
         return json.loads(self.HANDOFF.read_text())["components"]["schemas"]
 
+    def target_progress_block(self):
+        """A Target Progress block, with the Target Management it needs.
+
+        Phase 30B added a sixth block type, and this guard compares the published
+        registry against the types actually PROJECTED -- so the new type has to
+        appear here or the contract and the runtime drift apart silently.
+        """
+
+        period = frappe.get_doc({
+            "doctype": "YOB Target Period", "period_name": "_R25 SHAPE PERIOD",
+            "start_date": add_days(today(), -10), "end_date": add_days(today(), 10),
+            "enabled": 1,
+        }).insert(ignore_permissions=True)
+
+        rule = frappe.get_doc({
+            "doctype": "YOB Target Rule", "rule_name": "_R25-SHAPE-RULE",
+            "company": frappe.db.get_value("Company", {}, "name"),
+            "target_period": period.name,
+            "report_start_date": add_days(today(), -10),
+            "report_end_date": add_days(today(), 30),
+            "enabled": 1, "customer_visible": 1,
+            "target_scope": "Total Sales Order", "target_type": "Amount",
+            "target_amount": 1000, "incentive_type": "Fixed Amount",
+            "incentive_amount": 100,
+            "conditions": [{"condition_type": "Customer",
+                            "condition_customer": self.customer.name}],
+        }).insert(ignore_permissions=True)
+        rule.submit()
+
+        return self.make_block("Target Progress", block_name="_R25 SHAPE TP",
+                               target_rows=[{
+                                   "target_rule": rule.name,
+                                   "show_from": add_days(today(), -5),
+                                   "show_until": add_days(today(), 5)}])
+
     def every_block(self):
-        """One page carrying all five types, each fully populated."""
+        """One page carrying all six types, each fully populated."""
 
         category = self.make_category(slug="r25-shape-cat")
         media = {"desktop_image": "/files/d.png", "mobile_image": "/files/m.png",
@@ -1528,6 +1564,7 @@ class PublishedBlockShapeCase(RuntimeBase):
                             mobile_height_px=200, promo_cards=[dict(media)]),
             self.make_block("Product Grid", block_name="_R25 SHAPE PG",
                             storefront_category=category.name, item_limit=6),
+            self.target_progress_block(),
         ]
         self.make_page(slug="r25-shape", blocks=[{"block": b.name} for b in blocks])
 

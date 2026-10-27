@@ -21,12 +21,25 @@ eligibility. No pricing code appears here, now or later.
 
 `Promo Grid` is deliberately not called `Offer Grid`: in YOB an offer is an
 ERPNext Pricing Rule, and a promo card is a picture with a link.
+
+`Target Progress` stores WHICH targets a storefront surface exposes and WHEN.
+Those `Show From` / `Show Until` dates are a THIRD date concept, and the whole
+point of putting them here rather than on `YOB Target Rule`:
+
+    Target Period   which sales count          (YOB Target Period)
+    Report Window   when recalculation runs    (YOB Target Rule)
+    Show From/Until when a block displays it   (HERE)
+
+A January target may still be shown on 10 February, long after its sales period
+closed and while its report window is still open. One rule may also be exposed by
+several blocks on different dates. None of that is a property of the rule, so
+none of it is stored on the rule -- and a block never writes to one.
 """
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint
+from frappe.utils import cint, getdate
 
 from yob_storefront.utils.storefront_content import (
     apply_destination,
@@ -49,8 +62,10 @@ RICH_TEXT = "Rich Text"
 BANNER_CAROUSEL = "Banner Carousel"
 PRODUCT_GRID = "Product Grid"
 PROMO_GRID = "Promo Grid"
+TARGET_PROGRESS = "Target Progress"
 
-BLOCK_TYPES = (IMAGE_BANNER, RICH_TEXT, BANNER_CAROUSEL, PRODUCT_GRID, PROMO_GRID)
+BLOCK_TYPES = (IMAGE_BANNER, RICH_TEXT, BANNER_CAROUSEL, PRODUCT_GRID, PROMO_GRID,
+               TARGET_PROGRESS)
 
 #: Every type's own fields. Anything not listed for the current type is cleared.
 TYPE_FIELDS = {
@@ -64,9 +79,10 @@ TYPE_FIELDS = {
     PRODUCT_GRID: {"storefront_category", "card_type", "item_limit", "sort_by"},
     PROMO_GRID: {"promo_cards", "cards_per_row",
                  "desktop_height_px", "mobile_height_px"},
+    TARGET_PROGRESS: {"target_rows"},
 }
 
-TABLE_FIELDS = {"slides", "promo_cards"}
+TABLE_FIELDS = {"slides", "promo_cards", "target_rows"}
 
 #: The sorts `catalog_listing_service` supports. Price sorting is absent on
 #: purpose: a price is produced per customer by an ERPNext Sales Order, so
@@ -86,6 +102,7 @@ class YOBStorefrontBlock(Document):
         self.clear_other_type_fields()
         self.validate_media_rows()
         self.validate_type_rules()
+        self.validate_target_rows()
         self.validate_display_settings()
 
     def validate_block_type(self):
@@ -113,6 +130,84 @@ class YOBStorefrontBlock(Document):
                 else:
                     self.set(fieldname, None)
 
+    def validate_target_rows(self):
+        """Which targets this block exposes, and between which display dates.
+
+        Read-only with respect to Target Management: nothing here writes to a
+        `YOB Target Rule` or a `YOB Customer Target`. A block decides what is
+        SHOWN; the rule decides what is EARNED.
+        """
+
+        if self.block_type != TARGET_PROGRESS:
+            return
+
+        if not self.target_rows:
+            frappe.throw(
+                _("A Target Progress block needs at least one Target Rule."),
+                frappe.ValidationError)
+
+        seen = {}
+
+        for row in self.target_rows:
+            if not row.target_rule:
+                frappe.throw(
+                    _("Row {0}: Target Rule is required.").format(row.idx),
+                    frappe.ValidationError)
+
+            if not row.show_from:
+                frappe.throw(
+                    _("Row {0}: Show From is required.").format(row.idx),
+                    frappe.ValidationError)
+
+            if not row.show_until:
+                frappe.throw(
+                    _("Row {0}: Show Until is required.").format(row.idx),
+                    frappe.ValidationError)
+
+            if getdate(row.show_from) > getdate(row.show_until):
+                frappe.throw(
+                    _("Row {0}: Show From {1} cannot be after Show Until {2}.").format(
+                        row.idx, row.show_from, row.show_until),
+                    frappe.ValidationError)
+
+            # One rule, one row. Two rows for the same rule would either show a
+            # customer the same card twice or make the answer depend on which row
+            # a reader happened to evaluate first -- and a merchant wanting two
+            # display windows for one rule is describing two blocks.
+            if row.target_rule in seen:
+                frappe.throw(
+                    _("Target Rule {0} appears in rows {1} and {2}. List a rule once "
+                      "per block.").format(row.target_rule, seen[row.target_rule], row.idx),
+                    frappe.ValidationError)
+
+            seen[row.target_rule] = row.idx
+
+            rule = frappe.db.get_value(
+                "YOB Target Rule", row.target_rule,
+                ["customer_visible", "docstatus"], as_dict=True)
+
+            if not rule:
+                frappe.throw(
+                    _("Row {0}: Target Rule {1} does not exist.").format(
+                        row.idx, row.target_rule),
+                    frappe.ValidationError)
+
+            # The rule's own master switch. Refused at configuration time as well
+            # as re-checked at projection: a merchant should find out while
+            # building the block, not discover a silently empty one later.
+            if not rule.customer_visible:
+                frappe.throw(
+                    _("Row {0}: Target Rule {1} is not marked Customer Visible, so it "
+                      "cannot be shown in the storefront.").format(
+                        row.idx, row.target_rule),
+                    frappe.ValidationError)
+
+            if cint(rule.docstatus) != 1:
+                frappe.throw(
+                    _("Row {0}: Target Rule {1} is not submitted.").format(
+                        row.idx, row.target_rule),
+                    frappe.ValidationError)
+
     def validate_media_rows(self):
         """Slides and promo cards share one shape, so they share one check."""
 
@@ -136,9 +231,23 @@ class YOBStorefrontBlock(Document):
             BANNER_CAROUSEL: self._banner_carousel,
             PRODUCT_GRID: self._product_grid,
             PROMO_GRID: self._promo_grid,
+            TARGET_PROGRESS: self._target_progress,
         }[self.block_type]
 
         handler()
+
+    def _target_progress(self):
+        """The block-level rule: a Target Progress block must configure targets.
+
+        Per-row validation lives in `validate_target_rows()`, which runs first --
+        this is the same split the other types use between their row checks and
+        their own.
+        """
+
+        if not self.target_rows:
+            frappe.throw(
+                _("A Target Progress block needs at least one Target Rule."),
+                frappe.ValidationError)
 
     def _image_banner(self):
         if not self.desktop_image:
