@@ -226,7 +226,11 @@ class CommitmentCase(LifecycleCase):
 
         self.assertFalse(_error_code(result), f"unexpected error: {result}")
         self.assertTrue(result["created"])
-        self.assertEqual(frappe.db.count("Sales Order"), so_before + 1)
+        # Counted AFTER the attempt was issued. Since Phase 32C the order is the
+        # attempt's own snapshot and already exists, so a correct commitment adds
+        # NONE -- a second one here would be the duplicate this design prevents.
+        self.assertEqual(frappe.db.count("Sales Order"), so_before,
+                         "commitment created a second Sales Order")
         self.assertEqual(result["sales_order"].docstatus, 0, "must stay Draft")
 
     def test_financial_invariant_pr_equals_cart_equals_sales_order(self):
@@ -306,35 +310,42 @@ class CommitmentCase(LifecycleCase):
     # ------------------------------------------------------------ 10
 
     def test_conversion_failure_rolls_back_completely(self):
-        """10. No partial Sales Order, Cart stays Draft, PR stays Cart-backed.
+        """10. A failed conversion leaves NOTHING behind.
+
+        Phase 32C moved the conversion: the Sales Order is built when the
+        attempt is ISSUED, not when the Cart is closed, so this is now a Proceed
+        failure rather than a commitment failure. The guarantee is unchanged and
+        is in fact wider -- three artefacts must all be absent, not two, because
+        the attempt now also creates a DocShare.
 
         A disabled Customer is a hard transaction-time ERPNext validation, and
         it is disabled below the ORM so the failure lands inside the conversion
-        rather than in fixture setup -- the same trigger the Gate 2 rollback
-        test uses.
+        rather than in fixture setup.
         """
 
-        cart, data = self.committed_pr()
+        cart = self.make_cart(qty=12)
         so_before = frappe.db.count("Sales Order")
+        pr_before = frappe.db.count("Payment Request")
+        share_before = frappe.db.count("DocShare", {"share_doctype": "Sales Order"})
 
         frappe.db.set_value("Customer", CUSTOMER, "disabled", 1, update_modified=False)
         frappe.clear_cache()
 
         with self.assertRaises(frappe.ValidationError):
-            ensure_payment_request_committed(token=data["token"])
+            self.proceed()
 
         self.assertEqual(frappe.db.count("Sales Order"), so_before,
-                         "a Sales Order survived a failed commitment")
+                         "a Sales Order survived a failed issuance")
+        self.assertEqual(frappe.db.count("Payment Request"), pr_before,
+                         "a Payment Request survived a failed issuance")
+        self.assertEqual(
+            frappe.db.count("DocShare", {"share_doctype": "Sales Order"}), share_before,
+            "an orphaned DocShare survived a failed issuance")
 
         cart_row = frappe.db.get_value("Cart", cart.name,
                                        ["status", "sales_order"], as_dict=True)
         self.assertEqual(cart_row.status, "Draft")
         self.assertFalse(cart_row.sales_order)
-
-        pr_row = self.pr_row(data["payment_request"],
-                             "reference_doctype", "reference_name")
-        self.assertEqual(pr_row.reference_doctype, "Cart")
-        self.assertEqual(pr_row.reference_name, cart.name)
 
     def test_rollback_leaves_no_stale_document_cache(self):
         """The Gate 3 rule, applied to the commitment block.
@@ -343,19 +354,19 @@ class CommitmentCase(LifecycleCase):
         attempt above, a cached read must still show database truth.
         """
 
-        cart, data = self.committed_pr()
+        cart = self.make_cart(qty=12)
 
         frappe.db.set_value("Customer", CUSTOMER, "disabled", 1, update_modified=False)
         frappe.clear_cache()
 
+        # The failure now lands in issuance, where the conversion lives since
+        # Phase 32C. What must hold is unchanged: after the rollback a CACHED
+        # read still shows database truth, not the half-built state.
         with self.assertRaises(frappe.ValidationError):
-            ensure_payment_request_committed(token=data["token"])
+            self.proceed()
 
         self.assertEqual(frappe.get_cached_doc("Cart", cart.name).status, "Draft")
-        self.assertEqual(
-            frappe.get_cached_doc("Payment Request",
-                                  data["payment_request"]).reference_doctype,
-            "Cart")
+        self.assertFalse(frappe.get_cached_doc("Cart", cart.name).sales_order)
 
     # ------------------------------------------------------------ 11, 14
 
@@ -398,7 +409,8 @@ class CommitmentCase(LifecycleCase):
 
         self.assertEqual(len(names), 1, f"commitments diverged: {names}")
         self.assertEqual([r["created"] for r in results], [True, False, False])
-        self.assertEqual(frappe.db.count("Sales Order"), so_before + 1)
+        self.assertEqual(frappe.db.count("Sales Order"), so_before,
+                         "a replayed commitment created another Sales Order")
 
     def test_commitment_locks_cart_before_payment_request(self):
         """Lock direction must match proceed_to_payment, or the two deadlock.
@@ -447,9 +459,11 @@ class CommitmentCase(LifecycleCase):
         result = ensure_payment_request_committed(token=data["token"])
 
         self.assertEqual(_error_code(result), "payment_request_stale")
-        self.assertEqual(
-            self.pr_row(data["payment_request"], "reference_doctype").reference_doctype,
-            "Cart")
+        # Refused means NOT committed. Read off the commitment marker, since the
+        # reference has been a Sales Order since issuance.
+        self.assertIsNone(
+            self.pr_row(data["payment_request"], "custom_committed_at").custom_committed_at,
+            "a stale cart committed the obligation")
 
     def test_superseded_token_cannot_commit(self):
         """A credential revoked while this request waited must not commit."""

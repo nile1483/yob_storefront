@@ -211,6 +211,27 @@ def create_sales_order_from_cart(cart):
     # Request, whose trusted source authorizes exactly this Sales Order?".
     so.flags.ignore_permissions = True
 
+    # THE ORDER IS PAYABLE AT EXACTLY THE QUOTED TOTAL.
+    #
+    # ERPNext rounds `grand_total` into `rounded_total` by default, and
+    # `Payment Request.get_amount()` reads `(rounded_total or grand_total)`. A
+    # cart totalling 1069.2 therefore produces an order ERPNext considers
+    # payable at 1069.0, and 16.52.1 refuses a Payment Request for 1069.2
+    # against it ("Total Payment Request amount cannot be greater than Sales
+    # Order amount").
+    #
+    # Rounding is wrong for this document regardless of that refusal. The
+    # storefront quotes an exact total, the buyer agrees to it, and the gateway
+    # charges it; an order whose payable amount silently disagreed with the sum
+    # actually taken is the defect, not the validation. That mismatch existed
+    # before Phase 32C too -- it was simply never consulted, because the Payment
+    # Request referenced the Cart.
+    #
+    # Disabling rounding keeps Cart == Payment Request == Sales Order one
+    # number, which is the invariant `_assert_financial_identity` enforces, and
+    # changes nothing about what is charged.
+    so.disable_rounded_total = 1
+
     so.set_missing_values()
 
     apply_pricing_rule_on_transaction(so)

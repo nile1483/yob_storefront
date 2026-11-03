@@ -422,9 +422,9 @@ class EligibilityGateCase(CutoverCase):
         self.assertEqual(_error_code(response), "payment_method_unsupported")
         self.assertEqual(frappe.db.count("Sales Order"), so_before,
                          "an ineligible method still committed an order")
-        self.assertEqual(
-            self.pr_row(data["payment_request"], "reference_doctype").reference_doctype,
-            "Cart", "an ineligible method still moved the obligation")
+        self.assertIsNone(
+            self.pr_row(data["payment_request"], "custom_committed_at").custom_committed_at,
+            "the obligation was committed despite the refusal")
 
     def test_amount_bound_rejection_uses_the_immutable_obligation(self):
         response_amount = None
@@ -457,7 +457,9 @@ class PayLaterCase(CutoverCase):
         response = self.pay(data["token"], "Pay Later")
 
         self.assertIsNone(_error_code(response), f"unexpected: {response}")
-        self.assertEqual(frappe.db.count("Sales Order"), so_before + 1)
+        self.assertEqual(frappe.db.count("Sales Order"), so_before,
+                         "commitment created a second Sales Order; the attempt "
+                         "already owns its immutable snapshot since Phase 32C")
         self.assertEqual(response["data"]["payment_status"], "Unpaid")
 
         so = frappe.get_doc("Sales Order", response["data"]["sales_order"])
@@ -525,7 +527,9 @@ class RazorpayInitiationCase(CutoverCase):
         response = self.pay(data["token"], "Razorpay")
 
         self.assertIsNone(_error_code(response), f"unexpected: {response}")
-        self.assertEqual(frappe.db.count("Sales Order"), so_before + 1)
+        self.assertEqual(frappe.db.count("Sales Order"), so_before,
+                         "commitment created a second Sales Order; the attempt "
+                         "already owns its immutable snapshot since Phase 32C")
         self.assertEqual(len(self.fake.orders), 1)
 
     def test_commit_happens_before_the_provider_is_contacted(self):
@@ -681,7 +685,9 @@ class RazorpayInitiationCase(CutoverCase):
         self.assertEqual(len(order_ids), 1, f"provider orders diverged: {order_ids}")
         self.assertEqual(len(sales_orders), 1, f"sales orders diverged: {sales_orders}")
         self.assertEqual(len(self.fake.orders), 1)
-        self.assertEqual(frappe.db.count("Sales Order"), so_before + 1)
+        self.assertEqual(frappe.db.count("Sales Order"), so_before,
+                         "commitment created a second Sales Order; the attempt "
+                         "already owns its immutable snapshot since Phase 32C")
 
     def test_provider_failure_after_commitment_keeps_the_order(self):
         """17. The Sales Order is NOT rolled back."""

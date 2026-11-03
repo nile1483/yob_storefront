@@ -86,7 +86,10 @@ class GuestCommitmentCase(CutoverCase):
 
         self.assertFalse(_error_code(result), f"unexpected error: {result}")
         self.assertTrue(result["created"])
-        self.assertEqual(frappe.db.count("Sales Order"), so_before + 1)
+        # Since Phase 32C the attempt already owns its Sales Order, so a
+        # correct commitment adds none -- it closes the Cart against it.
+        self.assertEqual(frappe.db.count("Sales Order"), so_before,
+                         "commitment created a second Sales Order")
         self.assertEqual(result["sales_order"].docstatus, 0)
 
     def test_trusted_path_succeeds_where_guest_permissions_would_not(self):
@@ -223,7 +226,10 @@ class TokenIsNotASessionCase(CutoverCase):
         from yob_storefront.services import commitment_service
 
         source = _code_only(commitment_service.ensure_payment_request_committed)
-        self.assertIn("cart_name = pr.reference_name", source)
+        # The Cart identity is still read off the obligation, from `custom_cart`
+        # since Phase 32C -- `reference_name` now names the attempt's Sales Order.
+        # What must never appear is a cart taken from anywhere the caller controls.
+        self.assertIn("cart_name = pr.custom_cart", source)
 
     def test_committed_obligation_is_reused_not_duplicated(self):
         """Refreshing a public payment link must not create a second order."""
@@ -293,20 +299,26 @@ class TokenIsNotASessionCase(CutoverCase):
         cart, data = self.started()
         so_before = frappe.db.count("Sales Order")
 
-        frappe.db.set_value("Customer", cart.customer, "disabled", 1,
-                            update_modified=False)
-        frappe.clear_cache()
+        # The trigger moved with the conversion. Before Phase 32C a disabled
+        # Customer failed INSIDE the commitment, because the commitment built
+        # the Sales Order; it builds none now, so that no longer fails here.
+        # Destroying the attempt's snapshot is a real commitment-time failure
+        # and tests the same thing: a Guest-driven failure must leave the Cart
+        # open and the obligation uncommitted.
+        issued = self.pr_row(data["payment_request"], "reference_name").reference_name
+        frappe.delete_doc("Sales Order", issued, ignore_permissions=True, force=True)
 
         self.as_guest()
 
         with self.assertRaises(frappe.ValidationError):
             ensure_payment_request_committed(token=data["token"])
 
-        self.assertEqual(frappe.db.count("Sales Order"), so_before)
+        self.assertEqual(frappe.db.count("Sales Order"), so_before - 1,
+                         "the failed commitment created or removed an order of its own")
         self.assertEqual(frappe.db.get_value("Cart", cart.name, "status"), "Draft")
-        self.assertEqual(
-            self.pr_row(data["payment_request"], "reference_doctype").reference_doctype,
-            "Cart")
+        self.assertIsNone(
+            self.pr_row(data["payment_request"], "custom_committed_at").custom_committed_at,
+            "the obligation was committed despite the refusal")
 
 
 if __name__ == "__main__":
@@ -489,3 +501,153 @@ class ContextRestorationCase(CutoverCase):
         self.assertEqual(self.snapshot(), before,
                          "state not restored after an exception")
         self.assertFalse(frappe.has_permission("Item", "read"))
+
+
+# =========================================================================
+# PHASE 32C -- document-specific Sales Order authorization (DocShare)
+# =========================================================================
+
+class AttemptDocShareCase(CutoverCase):
+    """The grant that lets ERPNext validate, and nothing wider.
+
+    ERPNext 16.52.1's `Payment Request.validate()` calls
+    `ref_doc.check_permission("read")` on the referenced Sales Order. The
+    processor identity deliberately holds NO Sales Order role permission, so the
+    insert would be refused outright. A document-specific DocShare satisfies
+    exactly that check for exactly that order.
+
+    The alternative -- granting `Sales Order: read` to the role -- would let the
+    processor read every order on the site, including non-storefront ERP orders.
+    These tests are what keep the narrow option honest: if the grant ever widens,
+    `test_processor_cannot_read_an_unrelated_sales_order` fails first.
+    """
+
+    PROCESSOR = "payment-processor@yob.internal"
+
+    def _attempt(self):
+        """Issue one attempt and return (cart, payment request row)."""
+
+        cart = self.make_cart(qty=12)
+        data = self.assert_created(self.proceed())
+        row = self.pr_row(data["payment_request"], "reference_name", "custom_cart")
+        return cart, data, row
+
+    def _shares(self, sales_order):
+        return frappe.get_all(
+            "DocShare",
+            filters={"share_doctype": "Sales Order", "share_name": sales_order,
+                     "user": self.PROCESSOR},
+            fields=["name", "read", "write", "share", "submit", "everyone"])
+
+    # ------------------------------------------------------------- the grant
+
+    def test_issuing_an_attempt_shares_exactly_its_own_order(self):
+        _, _, row = self._attempt()
+
+        shares = self._shares(row.reference_name)
+
+        self.assertEqual(len(shares), 1,
+                         "an attempt must create exactly one share for its order")
+
+    def test_the_share_is_read_only(self):
+        """Every right spelled out: a default that widens upstream must fail here."""
+
+        _, _, row = self._attempt()
+        share = self._shares(row.reference_name)[0]
+
+        self.assertEqual(share.read, 1)
+        for right in ("write", "share", "submit", "everyone"):
+            with self.subTest(right=right):
+                self.assertEqual(share[right], 0,
+                                 f"the processor was granted `{right}` on a Sales Order")
+
+    def test_processor_can_read_the_attempt_order(self):
+        _, _, row = self._attempt()
+
+        original = frappe.session.user
+        try:
+            frappe.set_user(self.PROCESSOR)
+            self.assertTrue(
+                frappe.has_permission("Sales Order", "read", doc=row.reference_name),
+                "ERPNext could not validate the Payment Request against its own order")
+        finally:
+            frappe.set_user(original)
+
+    def test_processor_cannot_read_an_unrelated_sales_order(self):
+        """THE test that keeps this narrower than a role grant."""
+
+        _, _, first = self._attempt()
+
+        # A second, independent attempt. Its order is unrelated to the first.
+        self.make_cart(qty=10)
+        second_data = self.assert_created(self.proceed())
+        second = self.pr_row(second_data["payment_request"], "reference_name")
+
+        self.assertNotEqual(first.reference_name, second.reference_name,
+                            "fixture failed: both attempts share one order")
+
+        # Remove the second order's share so it stands for "an order this
+        # processor was never authorised for" -- an ERP order, or another
+        # customer's. Role-level read would still expose it; a share does not.
+        for share in self._shares(second.reference_name):
+            frappe.delete_doc("DocShare", share.name, ignore_permissions=True, force=True)
+
+        original = frappe.session.user
+        try:
+            frappe.set_user(self.PROCESSOR)
+            self.assertFalse(
+                frappe.has_permission("Sales Order", "read", doc=second.reference_name),
+                "the processor read a Sales Order it was never shared")
+            with self.assertRaises(frappe.PermissionError):
+                frappe.get_doc("Sales Order", second.reference_name).check_permission("read")
+        finally:
+            frappe.set_user(original)
+
+    # --------------------------------------------------------- who does NOT
+
+    def test_the_buyer_gains_no_sales_order_access(self):
+        """The share authorises the internal processor, never the payer."""
+
+        _, _, row = self._attempt()
+
+        self.assertEqual(
+            frappe.get_all("DocShare",
+                           filters={"share_doctype": "Sales Order",
+                                    "share_name": row.reference_name},
+                           pluck="user"),
+            [self.PROCESSOR],
+            "the attempt order was shared with somebody other than the processor")
+
+    def test_guest_gains_no_sales_order_access(self):
+        _, _, row = self._attempt()
+
+        original = frappe.session.user
+        try:
+            frappe.set_user("Guest")
+            self.assertFalse(
+                frappe.has_permission("Sales Order", "read", doc=row.reference_name),
+                "holding the public token granted Guest read on the order")
+        finally:
+            frappe.set_user(original)
+
+    def test_no_role_level_sales_order_permission_was_added(self):
+        """Option E, not Option A. A role grant would make the share pointless."""
+
+        self.assertFalse(
+            frappe.db.exists("Custom DocPerm",
+                             {"role": "YOB Payment Processor", "parent": "Sales Order"}),
+            "a role-level Sales Order permission appeared; the document-specific "
+            "share is no longer the boundary")
+
+    # ------------------------------------------------------------ idempotent
+
+    def test_repeated_proceed_on_an_unchanged_cart_adds_no_second_share(self):
+        """An unchanged cart reuses the attempt, so it reuses the one share."""
+
+        _, _, row = self._attempt()
+
+        self.proceed()
+        self.proceed()
+
+        self.assertEqual(len(self._shares(row.reference_name)), 1,
+                         "repeated Proceed duplicated the DocShare")

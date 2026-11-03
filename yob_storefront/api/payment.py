@@ -165,7 +165,11 @@ def get_checkout_data(token=None):
     if is_error(pr):
         return pr
 
-    if pr.reference_doctype == "Sales Order":
+    # COMMITTED, not "Sales-Order-backed". Since Phase 32C the reference is a
+    # Sales Order from issuance, so branching on it would send EVERY checkout
+    # down the post-commitment path and skip the staleness comparison -- a
+    # changed cart would stay silently payable at the old amount.
+    if pr.custom_committed_at:
         return _sales_order_checkout(pr)
 
     return _cart_checkout(pr)
@@ -301,9 +305,12 @@ def process_payment(token=None, payment_method=None):
         # UPDATE and remains the authority. This check exists for error
         # ORDERING, never as the safety guarantee.
         #
-        # Skipped for an already Sales-Order-backed obligation: its cart is
-        # finished and must never be consulted again.
-        if pr.reference_doctype == "Cart":
+        # Skipped for an already COMMITTED obligation: its cart is finished and
+        # must never be consulted again. Not "Sales-Order-backed" -- since Phase
+        # 32C every obligation references a Sales Order from issuance, so that
+        # wording would read as "always skipped" and invite the staleness check
+        # to be dropped.
+        if not pr.custom_committed_at:
             current = validate_payment_request_source_current(pr)
 
             if is_error(current):
@@ -457,10 +464,13 @@ def _source_context(pr):
     the Payment Request does not carry one.
     """
 
-    if pr.reference_doctype == "Cart":
-        company = frappe.db.get_value("Cart", pr.reference_name, "company")
-    elif pr.reference_doctype == "Sales Order":
+    # The company comes from whichever document the obligation references. Since
+    # Phase 32C that is always the attempt's Sales Order; the Cart branch is kept
+    # for any historical row issued before the change.
+    if pr.reference_doctype == "Sales Order":
         company = frappe.db.get_value("Sales Order", pr.reference_name, "company")
+    elif pr.reference_doctype == "Cart":
+        company = frappe.db.get_value("Cart", pr.reference_name, "company")
     else:
         return error_response(
             PAYMENT_REFERENCE_INVALID,

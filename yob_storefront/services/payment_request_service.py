@@ -28,6 +28,7 @@ from contextlib import contextmanager
 from datetime import timedelta
 
 import frappe
+from frappe import _
 from frappe.utils import now_datetime
 
 from yob_storefront.api.response import (
@@ -48,6 +49,7 @@ from yob_storefront.api.response import (
     error_response,
 )
 from yob_storefront.services.cart_service import reprice_cart
+from yob_storefront.services.order_service import create_sales_order_from_cart
 from yob_storefront.services.payment_source import cart_payment_snapshot, fingerprint
 
 #: How long an issued checkout credential stays usable.
@@ -167,25 +169,28 @@ def validate_payment_request_source_current(pr):
     build its response from it without a second calculation.
     """
 
-    if pr.reference_doctype != "Cart":
-        # Sales-Order-backed obligations exist (Pay Later moves the reference
-        # after commitment). They are NOT compared against a Cart, and a Cart
-        # change must never supersede them. A Sales Order payment DTO is
-        # deliberately out of Phase 1 scope.
+    # COMMITTED, NOT "Sales-Order-backed" -- the distinction changed in 32C.
+    #
+    # The reference is a Sales Order from birth now, so it no longer tells the
+    # two phases apart; `custom_committed_at` does. A committed obligation is
+    # never compared against a Cart again: its Cart is closed, and a later cart
+    # must never be able to supersede an order someone may already be paying.
+    # `validate_sales_order_source` is that phase's check.
+    if pr.custom_committed_at:
         return error_response(
             PAYMENT_REFERENCE_INVALID,
             "This checkout link is not valid.",
             status_code=HTTP_UNPROCESSABLE,
         )
 
-    if not frappe.db.exists("Cart", pr.reference_name):
+    if not pr.custom_cart or not frappe.db.exists("Cart", pr.custom_cart):
         return error_response(
             CART_NOT_FOUND,
             "The cart for this checkout link no longer exists.",
             status_code=HTTP_NOT_FOUND,
         )
 
-    cart = frappe.get_doc("Cart", pr.reference_name)
+    cart = frappe.get_doc("Cart", pr.custom_cart)
 
     if not frappe.db.exists("Customer", cart.customer):
         return error_response(
@@ -469,8 +474,15 @@ def _usable_candidates(cart):
     return frappe.get_all(
         "Payment Request",
         filters={
-            "reference_doctype": "Cart",
-            "reference_name": cart.name,
+            # Selected by `custom_cart`, not by the reference: since Phase 32C
+            # the reference is this attempt's own Sales Order, so it identifies
+            # the SNAPSHOT rather than the source. The Cart link is what groups
+            # the attempts made for one cart.
+            "custom_cart": cart.name,
+            # An uncommitted attempt only. Once the Cart has been closed against
+            # its order there is nothing left to supersede, and reusing that
+            # attempt for a new cart is exactly what must never happen.
+            "custom_committed_at": ["is", "not set"],
             "party_type": "Customer",
             "party": cart.customer,
             "docstatus": ["<", 2],
@@ -480,6 +492,7 @@ def _usable_candidates(cart):
         fields=[
             "name", "grand_total", "currency", "custom_source_fingerprint",
             "custom_checkout_token", "custom_checkout_expiry", "creation",
+            "reference_name",
         ],
         order_by="creation asc, name asc",
         ignore_permissions=True,
@@ -510,28 +523,123 @@ def _select_matching(candidates, cart, current_fingerprint):
 
 
 def _create_payment_request(cart, source_fingerprint):
-    """Issue a new Draft Payment Request for the Cart's current obligation."""
+    """Issue ONE payment attempt: an immutable Draft Sales Order, then its
+    Payment Request.
+
+    ONE ATTEMPT = ONE SNAPSHOT
+    --------------------------
+    The Sales Order built here is this attempt's immutable record of what was
+    offered. It is never re-costed, never re-pointed at another obligation, and
+    never reused by a different attempt: a changed Cart supersedes the whole
+    attempt and the replacement builds its own Sales Order. That is what keeps
+    "which order did this payment pay for?" answerable from the Payment Request
+    alone, including for a payment that arrives after supersession.
+
+    WHY THE REFERENCE IS A SALES ORDER
+    ----------------------------------
+    ERPNext 16.52.1 enforces `ALLOWED_DOCTYPES_FOR_PAYMENT_REQUEST` inside
+    `validate_reference_document()`, which runs on every insert, and `Cart` is
+    not in that list. The reference is therefore a Sales Order from birth --
+    which is also where it already ended up, because commitment used to re-point
+    it. This shortens the Cart-backed window to zero rather than inventing a new
+    model. The Cart link moves to `custom_cart`.
+
+    TRUSTED EXECUTION IS REQUIRED HERE
+    ----------------------------------
+    16.52.1's `Payment Request.validate()` also calls
+    `ref_doc.check_permission("read")`, and a storefront buyer deliberately holds
+    no Sales Order read (`permissions/storefront_role`). The order build and the
+    insert therefore share the SAME trusted boundary the commitment already used,
+    entered only after `proceed_to_payment` has authenticated the caller and
+    locked and repriced the Cart.
+    """
 
     token = _new_token()
 
-    pr = frappe.get_doc({
-        "doctype": "Payment Request",
-        "payment_request_type": "Inward",
-        "party_type": "Customer",
-        "party": cart.customer,
-        "reference_doctype": "Cart",
-        "reference_name": cart.name,
-        "grand_total": cart.grand_total,
-        "currency": cart.currency,
-        "email_to": frappe.session.user,
-        "subject": f"Payment for Cart {cart.name}",
-        "custom_source_fingerprint": source_fingerprint,
-        "custom_checkout_token": token,
-        "custom_checkout_expiry": now_datetime() + CHECKOUT_TOKEN_TTL,
-    })
-    pr.insert(ignore_permissions=True)
+    with trusted_execution():
+        so = create_sales_order_from_cart(cart)
+
+        # The obligation must equal its own snapshot, checked before the Payment
+        # Request exists rather than after. ERPNext compares `grand_total`
+        # against the reference during validate(), so a mismatch would otherwise
+        # surface as an opaque ERPNext refusal instead of a YOB invariant.
+        if not same_money(so.grand_total, cart.grand_total) or so.currency != cart.currency:
+            frappe.throw(
+                _("The order snapshot does not match the cart it was built from."),
+                frappe.ValidationError,
+            )
+
+        _grant_processor_read(so.name)
+
+        pr = frappe.get_doc({
+            "doctype": "Payment Request",
+            "payment_request_type": "Inward",
+            "party_type": "Customer",
+            "party": cart.customer,
+            "reference_doctype": "Sales Order",
+            "reference_name": so.name,
+            "grand_total": so.grand_total,
+            "currency": so.currency,
+            "email_to": frappe.session.user,
+            "subject": f"Payment for Order {so.name}",
+            "custom_cart": cart.name,
+            "custom_source_fingerprint": source_fingerprint,
+            "custom_checkout_token": token,
+            "custom_checkout_expiry": now_datetime() + CHECKOUT_TOKEN_TTL,
+        })
+        pr.insert(ignore_permissions=True)
 
     return pr, token
+
+
+def _grant_processor_read(sales_order):
+    """Let the trusted processor read THIS attempt's order, and no other.
+
+    ERPNext 16.52.1's `Payment Request.validate()` calls
+    `ref_doc.check_permission("read")` on the referenced Sales Order. The
+    processor identity deliberately holds no Sales Order role permission, so the
+    insert would be refused. A document-specific `DocShare` satisfies exactly
+    that check -- Frappe's `has_permission` falls through to
+    `false_if_not_shared()`, which matches on `share_name` (frappe/permissions.py
+    :179-199) -- WITHOUT making every other Sales Order readable. Verified: an
+    unshared order is still refused, and a Payment Request against one still
+    raises PermissionError.
+
+    READ AND NOTHING ELSE. `write`, `share`, `submit` and `everyone` are passed
+    explicitly rather than left to defaults, for the same reason the role's
+    Custom DocPerm spells out its zeros: a default that changes upstream must
+    not silently widen this grant.
+
+    `ignore_share_permission` controls who may CREATE the share -- neither the
+    buyer nor the processor holds `share` on Sales Order. It does not bypass the
+    permission check itself, which still runs and still refuses unshared orders.
+    It is NOT `ignore_permissions`.
+
+    Idempotent, and transactional: the share is written inside the caller's
+    transaction alongside the Sales Order and the Payment Request, so a rollback
+    takes it with them and can never leave an orphaned grant behind.
+    """
+
+    from yob_storefront.install import PAYMENT_PROCESSOR_USER
+
+    if frappe.db.exists("DocShare", {
+        "share_doctype": "Sales Order",
+        "share_name": sales_order,
+        "user": PAYMENT_PROCESSOR_USER,
+    }):
+        return
+
+    frappe.share.add(
+        "Sales Order",
+        sales_order,
+        user=PAYMENT_PROCESSOR_USER,
+        read=1,
+        write=0,
+        share=0,
+        submit=0,
+        everyone=0,
+        flags={"ignore_share_permission": True},
+    )
 
 
 def _rotate_credential(pr_name):

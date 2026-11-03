@@ -21,7 +21,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import frappe
-from frappe.utils import now_datetime
+from frappe.utils import flt, now_datetime
 
 from yob_storefront.api.response import (
     CHECKOUT_TOKEN_EXPIRED,
@@ -304,14 +304,30 @@ class ProceedCase(LifecycleCase):
 
         row = self.pr_row(data["payment_request"], "grand_total", "currency",
                           "custom_source_fingerprint", "reference_doctype",
-                          "reference_name", "party")
+                          "reference_name", "party", "custom_cart",
+                          "custom_committed_at")
 
-        self.assertEqual(row.reference_doctype, "Cart")
-        self.assertEqual(row.reference_name, cart.name)
+        # The obligation references its own immutable Sales Order snapshot, and
+        # the Cart it was issued for is carried separately. Before Phase 32C the
+        # reference WAS the Cart; ERPNext 16.52.1 does not allow that, and the
+        # order is what a payment ultimately pays for anyway.
+        self.assertEqual(row.reference_doctype, "Sales Order")
+        self.assertTrue(frappe.db.exists("Sales Order", row.reference_name))
+        self.assertEqual(row.custom_cart, cart.name)
         self.assertEqual(row.party, CUSTOMER)
+
+        # Issued, not yet committed: the Cart may still move and supersede this.
+        self.assertIsNone(row.custom_committed_at)
+
+        # The fingerprint still describes the CART state the attempt was issued
+        # for -- that is what staleness compares against, and it is unchanged.
         self.assertEqual(row.custom_source_fingerprint,
                          cart_fingerprint(frappe.get_doc("Cart", cart.name)))
+
+        # One number across Cart, obligation and snapshot.
+        so_total = frappe.db.get_value("Sales Order", row.reference_name, "grand_total")
         self.assertAlmostEqual(float(row.grand_total), float(cart.grand_total), places=2)
+        self.assertAlmostEqual(float(row.grand_total), float(so_total), places=2)
 
     def test_unchanged_proceed_reuses_pr_and_token(self):
         """7. Idempotent: an unchanged cart must not issue a second obligation."""
@@ -680,9 +696,12 @@ class StaleDispatchCase(LifecycleCase):
         self.assertEqual(dict(before),
                          dict(self.pr_row(data["payment_request"], "grand_total",
                                           "currency", "custom_source_fingerprint")))
-        self.assertEqual(
-            self.pr_row(data["payment_request"], "reference_doctype").reference_doctype,
-            "Cart", "a stale checkout moved the reference to a Sales Order")
+        # "The obligation was not committed." Read off the commitment marker
+        # since Phase 32C: the reference is a Sales Order from issuance, so it
+        # can no longer witness whether the Cart was closed against it.
+        self.assertIsNone(
+            self.pr_row(data["payment_request"], "custom_committed_at").custom_committed_at,
+            "a stale checkout committed the obligation")
 
     def test_current_pay_later_still_commits(self):
         """The migration must not only reject -- the good path must still work.
@@ -692,17 +711,30 @@ class StaleDispatchCase(LifecycleCase):
 
         self.make_cart(qty=12)
         data = self.assert_created(self.proceed())
+
+        # Counted AFTER Proceed on purpose. Since Phase 32C the attempt's Sales
+        # Order already exists by now, so a correct commitment adds none: it
+        # closes the Cart against the snapshot it was issued with. A second
+        # order appearing here would be the duplicate this architecture exists
+        # to prevent.
+        issued = self.pr_row(data["payment_request"], "reference_name").reference_name
         so_before = frappe.db.count("Sales Order")
 
         response = self.process(data["token"], "Pay Later")
 
         self.assertIsNone(_error_code(response), f"unexpected error: {response}")
-        self.assertEqual(frappe.db.count("Sales Order"), so_before + 1)
+        self.assertEqual(frappe.db.count("Sales Order"), so_before,
+                         "commitment created a second Sales Order")
         self.assertTrue(response["data"]["sales_order"])
+        self.assertEqual(response["data"]["sales_order"], issued,
+                         "commitment settled against a different order than it issued")
 
-        # The obligation moved to the Sales Order without its money changing.
-        pr = self.pr_row(data["payment_request"], "reference_doctype", "grand_total")
+        # Committed, and the money did not move.
+        pr = self.pr_row(data["payment_request"], "reference_doctype", "grand_total",
+                         "reference_name", "custom_committed_at")
         self.assertEqual(pr.reference_doctype, "Sales Order")
+        self.assertEqual(pr.reference_name, issued)
+        self.assertIsNotNone(pr.custom_committed_at, "the commitment was not recorded")
         self.assertAlmostEqual(float(pr.grand_total),
                                float(response["data"].get("amount") or pr.grand_total), places=2)
 
@@ -713,14 +745,13 @@ class StaleDispatchCase(LifecycleCase):
         data = self.assert_created(self.proceed())
         pr_name = data["payment_request"]
 
-        # Simulate the post-commitment state: the obligation now references a
-        # Sales Order, exactly as process_pay_later leaves it.
-        so = frappe.db.get_value("Sales Order", {}, "name")
-        if not so:
-            self.skipTest("no Sales Order on this site to reference")
-
+        # Simulate the post-commitment state. Since Phase 32C the obligation
+        # already references its own Sales Order, so what marks it committed --
+        # and therefore out of Cart supersession scope -- is the commitment
+        # stamp, exactly as _commit_cart leaves it. The reference is deliberately
+        # NOT repointed: an attempt keeps its own immutable snapshot.
         frappe.db.set_value("Payment Request", pr_name, {
-            "reference_doctype": "Sales Order", "reference_name": so})
+            "custom_committed_at": now_datetime()})
         frappe.clear_document_cache("Payment Request", pr_name)
 
         before = self.pr_row(pr_name, "grand_total", "currency",
@@ -822,9 +853,14 @@ class ConcurrencyCase(LifecycleCase):
         cart = self.make_cart(qty=12)
         first = self.assert_created(self.proceed())
 
-        # Forge a second usable credential on the same Cart, as legacy data has.
+        # Forge a second usable credential for the same Cart, as legacy data
+        # has. `custom_cart` and the credential fields carry `no_copy`, so
+        # copy_doc drops them and the fixture must restore the Cart link
+        # explicitly -- without it the duplicate is invisible to candidate
+        # selection and the test would pass for the wrong reason.
         legacy = frappe.copy_doc(frappe.get_doc("Payment Request",
                                                 first["payment_request"]))
+        legacy.custom_cart = cart.name
         legacy.custom_checkout_token = prs._new_token()
         legacy.custom_checkout_expiry = now_datetime() + timedelta(hours=1)
         legacy.custom_source_fingerprint = self.pr_row(
@@ -837,7 +873,7 @@ class ConcurrencyCase(LifecycleCase):
 
         usable = frappe.get_all(
             "Payment Request",
-            filters={"reference_doctype": "Cart", "reference_name": cart.name,
+            filters={"custom_cart": cart.name,
                      "custom_checkout_token": ["is", "set"]},
             pluck="name")
 
@@ -845,3 +881,58 @@ class ConcurrencyCase(LifecycleCase):
                          "exactly one credential must survive")
         self.assertEqual(result["payment_request"], first["payment_request"],
                          "selection must be deterministic (oldest matching), not row order")
+
+
+# =========================================================================
+# PHASE 32C -- pre-payment Draft orders and Customer Targets
+# =========================================================================
+
+class AttemptOrdersDoNotCountTowardTargetsCase(LifecycleCase):
+    """An unpaid attempt must not look like a sale.
+
+    Phase 32C creates a Draft Sales Order the moment a buyer clicks Proceed,
+    which is far earlier than before -- and abandoned attempts leave those
+    orders behind. Target Management counts `so.docstatus = 1` only
+    (`target_achievement`: "A draft is not a sale"), so an attempt contributes
+    nothing until somebody submits it, which nothing in the storefront does.
+
+    This is the regression that keeps those two facts connected: if either the
+    attempt started submitting its order, or the achievement query stopped
+    filtering on docstatus, a buyer would hit their target by abandoning
+    checkouts.
+    """
+
+    def test_the_attempt_order_is_draft(self):
+        self.make_cart(qty=12)
+        data = self.assert_created(self.proceed())
+
+        so = self.pr_row(data["payment_request"], "reference_name").reference_name
+
+        self.assertEqual(frappe.db.get_value("Sales Order", so, "docstatus"), 0,
+                         "a payment attempt submitted its Sales Order")
+
+    def test_an_unpaid_attempt_contributes_nothing_to_achievement(self):
+        from yob_storefront.services.target_achievement import achieved_amount
+
+        cart = self.make_cart(qty=12)
+        data = self.assert_created(self.proceed())
+        so = self.pr_row(data["payment_request"], "reference_name").reference_name
+
+        row = frappe.db.get_value(
+            "Sales Order", so, ["customer", "company", "transaction_date"], as_dict=True)
+
+        achieved = achieved_amount(
+            customer=row.customer, company=row.company,
+            scope="Total Sales Order", scope_value=None,
+            from_date=row.transaction_date, to_date=row.transaction_date,
+        )
+
+        self.assertEqual(
+            flt(achieved), 0.0,
+            "an unpaid Draft attempt order counted toward the customer's target")
+
+        # And the exclusion is the docstatus rule, not an accident of the date
+        # range: the order really is inside the window being measured.
+        self.assertTrue(frappe.db.exists(
+            "Sales Order", {"name": so, "transaction_date": row.transaction_date}))
+        self.assertGreater(flt(cart.grand_total), 0.0)

@@ -45,6 +45,7 @@ obligation is durable before an external side effect can reference it.
 """
 
 import frappe
+from frappe import _
 from frappe.utils import now_datetime
 
 from yob_storefront.api.response import (
@@ -55,7 +56,6 @@ from yob_storefront.api.response import (
     error_response,
     is_error,
 )
-from yob_storefront.services.order_service import create_sales_order_from_cart
 from yob_storefront.services.payment_request_service import (
     resolve_checkout_token,
     same_money,
@@ -101,17 +101,20 @@ def ensure_payment_request_committed(payment_request=None, token=None):
 
     # An already-committed obligation never looks for a Cart. Checked before
     # locking, and again after, because the answer can change while waiting.
-    if pr.reference_doctype == "Sales Order":
+    #
+    # Since Phase 32C the reference is a Sales Order from birth, so it no longer
+    # distinguishes the phases; `custom_committed_at` does.
+    if pr.custom_committed_at:
         return _existing_commitment(pr)
 
-    if pr.reference_doctype != "Cart":
+    if pr.reference_doctype != "Sales Order" or not pr.custom_cart:
         return error_response(
             PAYMENT_REFERENCE_INVALID,
             "This checkout link is not valid.",
             status_code=HTTP_UNPROCESSABLE,
         )
 
-    cart_name = pr.reference_name
+    cart_name = pr.custom_cart
 
     if not frappe.db.exists("Cart", cart_name):
         return error_response(
@@ -135,11 +138,11 @@ def ensure_payment_request_committed(payment_request=None, token=None):
 
     # A competing request may have committed this very Payment Request while we
     # waited -- this is the branch that makes two racing commitments converge on
-    # one Sales Order instead of creating two.
-    if pr.reference_doctype == "Sales Order":
+    # one Sales Order instead of both closing the Cart.
+    if pr.custom_committed_at:
         return _existing_commitment(pr)
 
-    if pr.reference_doctype != "Cart" or pr.reference_name != cart_name:
+    if pr.reference_doctype != "Sales Order" or pr.custom_cart != cart_name:
         return error_response(
             PAYMENT_REFERENCE_INVALID,
             "This checkout link is not valid.",
@@ -260,39 +263,47 @@ def _commit_cart(pr, cart):
     frappe.db.savepoint(savepoint)
 
     try:
-        # Trusted boundary: ERPNext's Cart -> Sales Order work reaches documents
-        # YOB never constructs (get_item_details' cached Item), which are
-        # permission-checked against the execution user. The public payer is
-        # Guest. Entered only here, after the token, source, financial, party,
-        # state and eligibility checks have all passed and the locks are held --
-        # the caller cannot influence WHICH documents this touches.
-        with trusted_execution():
-            so = create_sales_order_from_cart(cart)
+        # The Sales Order is NOT created here any more. Since Phase 32C the
+        # attempt's order is built by `_create_payment_request` at Proceed, and
+        # this step only closes the Cart against the snapshot that already
+        # exists. Loading it rather than rebuilding is the whole point: a second
+        # build could price differently and would silently become a second order
+        # for one obligation.
+        if not frappe.db.exists("Sales Order", pr.reference_name):
+            frappe.throw(
+                _("The order for this payment no longer exists."),
+                frappe.ValidationError,
+            )
+
+        so = frappe.get_doc("Sales Order", pr.reference_name)
 
         _assert_financial_identity(pr, cart, so)
 
         # Cart lifecycle. A full save: the Cart is the mutable source document
-        # and this is its legitimate terminal transition.
+        # and this is its legitimate terminal transition. Unchanged from before
+        # 32C -- the Cart still closes here, immediately before the provider is
+        # contacted, not at Proceed. Closing it at Proceed would make a buyer's
+        # own cart unusable the moment they looked at the payment page, and it is
+        # what makes supersession-after-a-live-provider-session impossible: once
+        # the Cart is Ordered there is no Draft cart for Proceed to find.
         cart.status = "Ordered"
         cart.sales_order = so.name
         cart.ordered_on = now_datetime()
         cart.checkout_by = frappe.session.user
         cart.save(ignore_permissions=True)
 
-        # The obligation now points at the committed Sales Order. Narrow field
-        # updates, never pr.save(): save() would rewrite grand_total, currency
-        # and the fingerprint from the in-memory document. Those three, and the
-        # checkout credential, are preserved exactly.
+        # Narrow field update, never pr.save(): save() would rewrite
+        # grand_total, currency and the fingerprint from the in-memory document.
+        # Those three, the Cart link and the checkout credential are preserved
+        # exactly.
         #
         # custom_source_fingerprint deliberately stays as issued. It is
-        # historical evidence of the CART obligation this payment was created
-        # for. Once reference_doctype is Sales Order it must never be
-        # reinterpreted as a Sales Order fingerprint -- which is why
-        # validate_payment_request_source_current refuses non-Cart sources
-        # rather than comparing them.
+        # historical evidence of the CART state this attempt was created for.
+        # Once committed it must never be reinterpreted or recompared -- which is
+        # why validate_payment_request_source_current refuses a committed
+        # obligation rather than comparing it.
         frappe.db.set_value("Payment Request", pr.name, {
-            "reference_doctype": "Sales Order",
-            "reference_name": so.name,
+            "custom_committed_at": now_datetime(),
         })
         frappe.clear_document_cache("Payment Request", pr.name)
 

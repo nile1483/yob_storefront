@@ -59,11 +59,23 @@ def payment_summary(pr, cart=None) -> dict:
     ``validate_payment_request_source_current``, avoiding a second calculation.
     """
 
+    # TWO QUESTIONS, NOT ONE.
+    #
+    # WHICH summary follows the attempt's PHASE, because since Phase 32C the
+    # reference is a Sales Order from issuance and reading it would show every
+    # buyer the post-commitment summary. WHETHER to answer at all still depends
+    # on the reference being one this service understands -- dropping that check
+    # would let a foreign reference fall through to the cart branch instead of
+    # being refused.
+    if pr.reference_doctype == "Sales Order":
+        if pr.custom_committed_at:
+            return _sales_order_summary(pr)
+        if pr.custom_cart:
+            return _cart_summary(pr, cart)
+
+    # A Cart reference can only be a row issued before Phase 32C.
     if pr.reference_doctype == "Cart":
         return _cart_summary(pr, cart)
-
-    if pr.reference_doctype == "Sales Order":
-        return _sales_order_summary(pr)
 
     return error_response(
         PAYMENT_REFERENCE_INVALID,
@@ -76,13 +88,17 @@ def _cart_summary(pr, cart=None) -> dict:
     """Pre-commitment view, from the Cart the obligation was issued for."""
 
     if cart is None:
-        if not frappe.db.exists("Cart", pr.reference_name):
+        # `custom_cart` since Phase 32C; `reference_name` only for a row issued
+        # before it, when the Cart WAS the reference.
+        cart_name = pr.custom_cart if pr.reference_doctype == "Sales Order" else pr.reference_name
+
+        if not cart_name or not frappe.db.exists("Cart", cart_name):
             return error_response(
                 CART_NOT_FOUND,
                 "The cart for this checkout link no longer exists.",
                 status_code=HTTP_NOT_FOUND,
             )
-        cart = frappe.get_doc("Cart", pr.reference_name)
+        cart = frappe.get_doc("Cart", cart_name)
 
     return {
         "source_doctype": "Cart",

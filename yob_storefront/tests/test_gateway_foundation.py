@@ -310,9 +310,9 @@ class ParityCase(CutoverCase):
                          "contacted the provider despite missing credentials")
         self.assertEqual(frappe.db.count("Sales Order"), so_before,
                          "an unstartable payment committed an order")
-        self.assertEqual(
-            self.pr_row(data["payment_request"], "reference_doctype").reference_doctype,
-            "Cart")
+        self.assertIsNone(
+            self.pr_row(data["payment_request"], "custom_committed_at").custom_committed_at,
+            "the obligation was committed despite the refusal")
 
     def test_recovery_still_converges_through_the_driver(self):
         """11. The guarantee Frappe Payments lacks, still held after the seam."""

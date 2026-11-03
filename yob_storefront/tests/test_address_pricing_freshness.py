@@ -240,9 +240,14 @@ class StaleAfterIssuanceCase(AddressFreshnessCase):
         self.assertEqual(frappe.db.count("Sales Order"), before,
                          "a Sales Order was committed for a superseded obligation")
         self.assertEqual(self.stored(cart, "status").status, "Draft")
-        self.assertEqual(
-            frappe.db.get_value("Payment Request", data["payment_request"], "reference_doctype"),
-            "Cart", "the obligation moved on despite being stale")
+        # "The obligation did not move on." Before Phase 32C that was read off
+        # `reference_doctype`, which stayed "Cart" until commitment re-pointed
+        # it. The reference is a Sales Order from birth now, so the commitment
+        # marker is what carries the meaning -- and it must still be unset.
+        self.assertIsNone(
+            frappe.db.get_value(
+                "Payment Request", data["payment_request"], "custom_committed_at"),
+            "the obligation was committed despite being stale")
 
     def test_address_change_with_no_money_change_is_still_stale(self):
         """The address IS part of the obligation, not merely its price.
@@ -308,14 +313,31 @@ class CommitmentStructureCase(unittest.TestCase):
                         source.index("_commit_cart(pr"),
                         "the cart is committed before it is revalidated")
 
-    def test_the_cart_is_committed_from_exactly_one_place(self):
-        from yob_storefront.services import commitment_service
+    def test_a_cart_becomes_a_sales_order_in_exactly_one_place(self):
+        """One conversion site, so one staleness check can cover it.
 
-        module_source = inspect.getsource(commitment_service)
+        Phase 32C MOVED that site: the attempt's Sales Order is now built when
+        the obligation is issued (`payment_request_service`), not when the Cart
+        is closed (`commitment_service`). The invariant is unchanged and is what
+        this still protects -- a second conversion anywhere would be a second
+        order for one obligation, reachable without the fingerprint comparison.
+        """
 
-        self.assertEqual(module_source.count("create_sales_order_from_cart("), 1,
-                         "a second Cart -> Sales Order call appeared; it would not "
-                         "be covered by the staleness check above")
+        from yob_storefront.services import commitment_service, payment_request_service
+
+        issuing = inspect.getsource(payment_request_service)
+        committing = inspect.getsource(commitment_service)
+
+        self.assertEqual(
+            issuing.count("create_sales_order_from_cart("), 1,
+            "a second Cart -> Sales Order call appeared in the issuing path; it "
+            "would not be covered by the staleness check above",
+        )
+        self.assertEqual(
+            committing.count("create_sales_order_from_cart("), 0,
+            "commitment must not build an order any more -- it closes the Cart "
+            "against the snapshot the attempt already owns",
+        )
 
     def test_the_staleness_check_reprices_rather_than_reading_stored_totals(self):
         from yob_storefront.services import payment_request_service

@@ -122,11 +122,14 @@ class EndpointPreflightCase(CutoverCase):
                          "preflight failure left the Cart Ordered")
         self.assertIsNone(frappe.db.get_value("Cart", cart.name, "sales_order"))
 
-        pr = self.pr_row(data["payment_request"],
-                         "reference_doctype", "reference_name", "status")
-        self.assertEqual(pr.reference_doctype, "Cart",
-                         "preflight failure moved the obligation to a Sales Order")
-        self.assertEqual(pr.reference_name, cart.name)
+        pr = self.pr_row(data["payment_request"], "reference_doctype",
+                         "custom_cart", "custom_committed_at", "status")
+        # The attempt keeps its own snapshot and its Cart link; what a
+        # preflight failure must NOT do is commit it.
+        self.assertEqual(pr.reference_doctype, "Sales Order")
+        self.assertEqual(pr.custom_cart, cart.name)
+        self.assertIsNone(pr.custom_committed_at,
+                          "preflight failure committed the obligation")
         self.assertNotEqual(pr.status, "Paid")
 
         self.assertEqual(self.commits, [], "preflight failure committed durably")
@@ -229,7 +232,8 @@ class EndpointPreflightCase(CutoverCase):
             response = self.pay(data["token"], "Pay Later")
 
         self.assertIsNone(_error_code(response), f"unexpected: {response}")
-        self.assertEqual(frappe.db.count("Sales Order"), so_before + 1)
+        self.assertEqual(frappe.db.count("Sales Order"), so_before,
+                         "commitment created a second Sales Order")
         self.assertEqual(response["data"]["payment_status"], "Unpaid")
 
     def test_process_payment_has_no_razorpay_settings_lookup(self):

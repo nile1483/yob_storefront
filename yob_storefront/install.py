@@ -373,10 +373,42 @@ def ensure_custom_fields():
             ],
             "Payment Request": [
                 {
+                    "fieldname": "custom_cart",
+                    "label": "Source Cart",
+                    "fieldtype": "Link",
+                    "options": "Cart",
+                    "insert_after": "reference_name",
+                    "read_only": 1,
+                    "no_copy": 1,
+                    "description": (
+                        "The Cart this payment attempt was issued for. Until "
+                        "Phase 32C the Cart WAS the reference; ERPNext 16.52.1 "
+                        "refuses a Payment Request against any DocType outside "
+                        "ALLOWED_DOCTYPES_FOR_PAYMENT_REQUEST, so the reference "
+                        "is now the attempt's Sales Order and the Cart link "
+                        "lives here. Immutable after issuance."
+                    ),
+                },
+                {
+                    "fieldname": "custom_committed_at",
+                    "label": "Committed At",
+                    "fieldtype": "Datetime",
+                    "read_only": 1,
+                    "no_copy": 1,
+                    "description": (
+                        "When this attempt's Cart was closed against its Sales "
+                        "Order. Before Phase 32C `reference_doctype` told the "
+                        "two phases apart (Cart = uncommitted, Sales Order = "
+                        "committed); the reference is now a Sales Order from "
+                        "birth, so commitment needs its own marker. Unset = the "
+                        "Cart may still move and supersede this attempt."
+                    ),
+                },
+                {
                     "fieldname": "custom_checkout_token",
                     "label": "Checkout Token",
                     "fieldtype": "Data",
-                    "insert_after": "reference_name",
+                    "insert_after": "custom_cart",
                     "read_only": 1,
                     "no_copy": 1,
                     # Frappe coerces a blank value on a unique field to NULL
