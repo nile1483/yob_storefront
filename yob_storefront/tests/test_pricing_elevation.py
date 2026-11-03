@@ -124,13 +124,36 @@ class PricingElevationCase(unittest.TestCase):
                     f"{doctype} read must not come from a YOB-managed role",
                 )
 
-    def test_only_item_read_is_granted_by_the_role(self):
+    def test_role_grants_exactly_item_read_and_tax_template_select(self):
+        """The whole permission surface, pinned entry by entry.
+
+        `Sales Taxes and Charges Template` carries SELECT and not READ: ERPNext
+        16.52.1's `require_permission(..., "select")` is satisfied by it, and a
+        buyer still cannot open the document. Widening either row, or adding a
+        third DocType, has to fail here first.
+        """
+
         granted = frappe.db.get_all(
-            "Custom DocPerm", {"role": STOREFRONT_BUYER_ROLE}, ["parent", "read", "write", "create"]
+            "Custom DocPerm", {"role": STOREFRONT_BUYER_ROLE},
+            ["parent", "read", "select", "write", "create", "delete", "export", "report", "share"],
         )
-        self.assertEqual({r.parent for r in granted}, {"Item"})
-        for row in granted:
-            self.assertEqual((row.write, row.create), (0, 0), "role must be read-only")
+        by_parent = {r.parent: r for r in granted}
+
+        self.assertEqual(
+            set(by_parent), {"Item", "Sales Taxes and Charges Template"},
+            "the managed permission surface changed",
+        )
+        self.assertEqual((by_parent["Item"].read, by_parent["Item"].select), (1, 0))
+        tax = by_parent["Sales Taxes and Charges Template"]
+        self.assertEqual((tax.read, tax.select), (0, 1), "tax template must be select-only")
+
+        for parent, row in by_parent.items():
+            with self.subTest(doctype=parent):
+                self.assertEqual(
+                    (row.write, row.create, row.delete, row.export, row.report, row.share),
+                    (0, 0, 0, 0, 0, 0),
+                    f"{parent} must grant nothing beyond its single read/select bit",
+                )
 
     # ------------------------------------------------------- authorization
 
@@ -269,3 +292,179 @@ class RoleLifecycleCase(unittest.TestCase):
         frappe.set_user("Administrator")
         self.assertTrue(frappe.has_permission("Customer", "read"))
         self.assertTrue(frappe.has_permission("Sales Order", "read"))
+
+
+# =========================================================================
+# PHASE 32B -- ERPNext 16.52.1 explicit permission gates
+# =========================================================================
+
+TAX_TEMPLATE_DOCTYPE = "Sales Taxes and Charges Template"
+
+
+class ERPNextRequirePermissionCase(unittest.TestCase):
+    """The gate ERPNext 16.52.1 added, and the smallest grant that clears it.
+
+    `erpnext.require_permission()` does not exist in 16.31.1. On 16.52.1 India
+    Compliance's regional address hook reaches it on every priced transaction:
+
+        set_address_details -> get_regional_address_details
+          -> india_compliance ... get_gst_details
+            -> accounts_controller.get_taxes_and_charges
+              -> require_permission("Sales Taxes and Charges Template", n, "select")
+
+    Unfixed, the buyer's pricing Sales Order raises PermissionError,
+    `price_candidate()` absorbs it as item-local, and the catalogue silently
+    reports zero items while Administrator sees a full page. These tests fail
+    the moment that regresses, and they fail for the RIGHT reason -- they assert
+    on refusals, not merely on an empty result.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not _seeded():
+            raise unittest.SkipTest("requires seed_demo_data; run it on the test site first")
+        ensure_role_and_permissions()
+        sync_storefront_role(BUYER)
+        frappe.db.commit()
+        frappe.clear_cache()
+
+    def setUp(self):
+        _request()
+        frappe.set_user(BUYER)
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.local.request = None
+
+    # ------------------------------------------------------- the gate itself
+
+    def test_tax_template_select_is_granted_and_read_is_not(self):
+        """Select clears ERPNext's check; read would hand over the document."""
+
+        name = frappe.db.get_value(TAX_TEMPLATE_DOCTYPE, {}, "name")
+        if not name:
+            self.skipTest("no Sales Taxes and Charges Template on this site")
+
+        self.assertTrue(
+            frappe.has_permission(TAX_TEMPLATE_DOCTYPE, "select", doc=name),
+            "ERPNext 16.52.1 requires select on the tax template during pricing",
+        )
+        self.assertFalse(
+            frappe.has_permission(TAX_TEMPLATE_DOCTYPE, "read", doc=name),
+            "select must not have been widened into read",
+        )
+
+    def test_buyer_cannot_open_the_tax_template_document(self):
+        name = frappe.db.get_value(TAX_TEMPLATE_DOCTYPE, {}, "name")
+        if not name:
+            self.skipTest("no Sales Taxes and Charges Template on this site")
+
+        with self.assertRaises(frappe.PermissionError):
+            frappe.get_doc(TAX_TEMPLATE_DOCTYPE, name).check_permission("read")
+
+    def test_erpnext_refuses_nothing_during_a_buyer_priced_transaction(self):
+        """The regression that matters: ZERO refusals on the pricing path.
+
+        Asserting on the priced result alone would pass again if a future
+        change absorbed the refusal somewhere else, so the refusal hook itself
+        is counted.
+        """
+
+        import erpnext
+
+        refusals = []
+        original = erpnext._refuse
+
+        def counting_refuse():
+            refusals.append(True)
+            return original()
+
+        customer = get_storefront_customer(resolve_access(BUYER, STOREFRONT_APP))
+        settings = frappe.get_cached_doc("YOB Store Settings")
+
+        erpnext._refuse = counting_refuse
+        try:
+            pricing = get_item_pricing(
+                customer=customer, item_code=ITEM, qty=1,
+                company=settings.company, currency=settings.default_currency,
+            )
+        finally:
+            erpnext._refuse = original
+
+        self.assertEqual(refusals, [], "ERPNext refused a permission during buyer pricing")
+        self.assertIsNotNone(pricing, "pricing returned nothing for a legitimate buyer")
+
+    # ------------------------------------------------------------- isolation
+
+    def test_buyer_cannot_read_another_customers_address(self):
+        """The grant must not have opened party data to the buyer.
+
+        Address read predates this phase and comes from `All`; what protects it
+        is Frappe's permission query condition, not the absence of the role. If
+        that ever stops holding, this fails regardless of which change caused it.
+        """
+
+        mine = frappe.get_doc("Customer", CUSTOMER).name
+        other = frappe.db.sql(
+            """
+            SELECT dl.parent
+            FROM `tabDynamic Link` dl
+            WHERE dl.link_doctype = 'Customer'
+              AND dl.parenttype = 'Address'
+              AND dl.link_name != %s
+            LIMIT 1
+            """,
+            mine,
+        )
+        if not other:
+            self.skipTest("no second customer's Address on this site")
+
+        foreign = other[0][0]
+        self.assertFalse(
+            frappe.has_permission("Address", "read", doc=foreign),
+            "a buyer must not read another customer's Address",
+        )
+        with self.assertRaises(frappe.PermissionError):
+            frappe.get_doc("Address", foreign).check_permission("read")
+
+    def test_buyer_address_listing_excludes_other_customers(self):
+        visible = set(frappe.get_list("Address", pluck="name", limit_page_length=0))
+        foreign = {
+            row[0]
+            for row in frappe.db.sql(
+                """
+                SELECT dl.parent FROM `tabDynamic Link` dl
+                WHERE dl.link_doctype = 'Customer' AND dl.parenttype = 'Address'
+                  AND dl.link_name != %s
+                """,
+                CUSTOMER,
+            )
+        }
+        self.assertEqual(visible & foreign, set(), "another customer's Address was listable")
+
+    # ------------------------------------------------- unchanged commitments
+
+    def test_customer_read_is_still_denied(self):
+        self.assertFalse(frappe.has_permission("Customer", "read"))
+
+    def test_role_still_has_no_desk_access(self):
+        self.assertEqual(
+            frappe.db.get_value("Role", STOREFRONT_BUYER_ROLE, "desk_access"), 0,
+            "the storefront role must never grant Desk access",
+        )
+
+    def test_no_user_permission_rows_were_introduced(self):
+        self.assertEqual(frappe.db.count("User Permission", {"user": BUYER}), 0)
+
+    # ---------------------------------------------------------- provisioning
+
+    def test_provisioning_is_idempotent(self):
+        """`after_migrate` runs on every deploy; a second run must change nothing."""
+
+        frappe.set_user("Administrator")
+        before = frappe.db.count("Custom DocPerm", {"role": STOREFRONT_BUYER_ROLE})
+        ensure_role_and_permissions()
+        ensure_role_and_permissions()
+        frappe.db.commit()
+        after = frappe.db.count("Custom DocPerm", {"role": STOREFRONT_BUYER_ROLE})
+        self.assertEqual(before, after, "re-provisioning duplicated Custom DocPerm rows")

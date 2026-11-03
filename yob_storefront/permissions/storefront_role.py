@@ -32,6 +32,30 @@ STOREFRONT_APP_CODE = "STOREFRONT"
 # permission surface, so each entry needs a reason.
 MANAGED_READ_DOCTYPES = ("Item",)
 
+# SELECT, NOT READ -- and the difference is the whole point.
+#
+# ERPNext 16.52.1 added `erpnext.require_permission()` (it does not exist in
+# 16.31.1) and India Compliance's regional address hook reaches it on every
+# priced transaction:
+#
+#     set_address_details -> get_regional_address_details
+#       -> india_compliance ... get_gst_details
+#         -> erpnext.controllers.accounts_controller.get_taxes_and_charges
+#           -> require_permission("Sales Taxes and Charges Template", name, "select")
+#
+# Without it the buyer's pricing Sales Order raises PermissionError, which
+# `catalog_listing_service.price_candidate()` absorbs as an item-local fault --
+# so every candidate is silently dropped and the catalogue reports zero items
+# while Administrator sees a full page. The cart fails the same way, with a 500.
+#
+# `select` is the narrowest permission that satisfies the check: Frappe treats
+# it as "may be chosen in a link", NOT "may read the document", and
+# `frappe.only_has_select_perm()` exists precisely to distinguish the two. A tax
+# template is company-level configuration and holds no customer data, so this
+# grant cannot expose one buyer's records to another -- unlike a read grant on
+# Address or Customer, which is why neither is used here.
+MANAGED_SELECT_DOCTYPES = ("Sales Taxes and Charges Template",)
+
 
 def ensure_role_and_permissions():
     """Create the role and its read-only DocPerms. Idempotent.
@@ -50,7 +74,10 @@ def ensure_role_and_permissions():
 
     from frappe.permissions import setup_custom_perms
 
-    for doctype in MANAGED_READ_DOCTYPES:
+    granted = [(d, "read") for d in MANAGED_READ_DOCTYPES]
+    granted += [(d, "select") for d in MANAGED_SELECT_DOCTYPES]
+
+    for doctype, ptype in granted:
         # CRITICAL: a single Custom DocPerm REPLACES the DocType's entire
         # permission set. frappe/model/meta.py set_custom_permissions():
         #
@@ -78,12 +105,14 @@ def ensure_role_and_permissions():
             "parentfield": "permissions",
             "role": STOREFRONT_BUYER_ROLE,
             "permlevel": 0,
-            # Read ONLY. `export` is set explicitly to 0 rather than left to
-            # the field default, which is 1 -- a storefront buyer must not be
-            # able to export the item master.
-            "read": 1,
+            # Exactly one of read/select, never both: `read` for the catalogue
+            # master ERPNext genuinely reads, `select` for a master it only has
+            # to resolve a link against. `export` is set explicitly to 0 rather
+            # than left to the field default, which is 1 -- a storefront buyer
+            # must not be able to export the item master.
+            "read": 1 if ptype == "read" else 0,
             "export": 0,
-            "select": 0,
+            "select": 1 if ptype == "select" else 0,
             "write": 0,
             "create": 0,
             "delete": 0,
