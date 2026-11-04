@@ -162,7 +162,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-08-21 12:00:00.000000",
+ "modified": "2026-11-04 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "yob_storefront",
  "name": "YOB Storefront Menu Item",
@@ -189,5 +189,6 @@
  "autoname": "hash",
  "naming_rule": "Random",
  "title_field": "label",
+ "show_title_field_in_link": 1,
  "search_fields": "label,menu"
 }
