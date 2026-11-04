@@ -396,7 +396,12 @@ class SellingUomTransactionCase(SellingUomBase):
         from yob_storefront.api.catalog import resolve_stock_availability
 
         item = self.make_item("_U5-AVAIL", price=100, sales_uom="Box", factor=10)
-        warehouse = frappe.get_single_value("Stock Settings", "default_warehouse")
+        # ERPNext's warehouse, asked of ERPNext. `Stock Settings.default_warehouse`
+        # used to be read here; 16.52.1 retired the field, `get_single_value`
+        # answered None for it without complaining, and the fixture then built a
+        # `Bin` with no warehouse (Phase 32F).
+        warehouse = resolve_stock_availability(self.reload_customer(), item)["warehouse"]
+        self.assertTrue(warehouse, "ERPNext resolved no warehouse for this fixture")
         frappe.db.set_value("Bin", get_bin(item, warehouse).name, "actual_qty", 125)
 
         preview = self.preview(item, qty=2)

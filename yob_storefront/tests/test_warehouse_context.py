@@ -15,8 +15,18 @@ ERPNext, always. `get_item_details` -> `get_basic_details` ->
 `get_item_warehouse_`, whose precedence is
 
     Sales Order `set_warehouse` -> Item Default (per company) -> Item Group
-    default -> Brand default -> the row's own warehouse -> Stock Settings
-    default (only when it belongs to the same company)
+    default -> Brand default -> the row's own warehouse -> `Company`
+    `default_warehouse`
+
+The last step changed in ERPNext 16.52.1 (Phase 32F). Until 16.31.1 it was the
+global `Stock Settings.default_warehouse`, consulted only when it belonged to
+the transaction's company; that field no longer exists on the DocType and the
+per-company `Company.default_warehouse` replaced it. The guard went with it,
+because a per-company field cannot name another company's warehouse.
+
+Nothing in YOB reads either field -- production asks `get_item_details` and
+inherits the answer -- so the change reached only the fixtures in this file,
+which named the retired field directly.
 
 YOB reimplements NO part of that chain and supplies no warehouse of its own.
 The buyer cannot influence it: no storefront endpoint takes a warehouse and
@@ -106,7 +116,14 @@ class WarehouseBase(unittest.TestCase):
         self.uom = frappe.db.get_value("Item", SEED_ITEM, "stock_uom")
         self.hsn = frappe.db.get_value("Item", SEED_ITEM, "gst_hsn_code")
         self.price_list = frappe.get_single("Selling Settings").selling_price_list
-        self.site_warehouse = frappe.get_single_value("Stock Settings", "default_warehouse")
+        # ERPNext's terminal fallback, i.e. the warehouse an item with no
+        # default of its own resolves to. `Stock Settings.default_warehouse`
+        # until 16.31.1, `Company.default_warehouse` since 16.52.1. Reading the
+        # retired field returned None silently -- `frappe.get_single_value` does
+        # not object to a fieldname the DocType no longer has -- which is how
+        # five tests came to build a `Bin` with no warehouse at all.
+        self.site_warehouse = frappe.get_cached_value(
+            "Company", self.company, "default_warehouse")
         self.customer = frappe.get_doc("Customer", CUSTOMER)
 
     def tearDown(self):
@@ -151,20 +168,62 @@ class WarehouseBase(unittest.TestCase):
             "selling": 1, "uom": uom or self.uom}).insert(ignore_permissions=True).name
 
     def strip_default_warehouses(self, item_code):
-        """Leave ERPNext with nothing to resolve, at every level of its chain."""
+        """Leave ERPNext with nothing to resolve, at every level of its chain.
 
+        Every level means every level that still EXISTS. Clearing the retired
+        `Stock Settings.default_warehouse` was accepted silently and stripped
+        nothing, so `Company.default_warehouse` went on answering and the three
+        tests describing an unresolvable warehouse were quietly describing a
+        resolved one instead.
+
+        The Item Group and Brand rows are cleared for completeness: the seeded
+        item group is shared with other fixtures, so a default added to it later
+        must not be able to resolve a warehouse behind this helper's back.
+        """
+
+        brand = frappe.db.get_value("Item", item_code, "brand")
         frappe.db.delete("Item Default", {"parent": item_code})
-        frappe.db.set_single_value("Stock Settings", "default_warehouse", None)
+        frappe.db.delete("Item Default", {"parent": self.item_group,
+                                          "parenttype": "Item Group"})
+        if brand:
+            frappe.db.delete("Item Default", {"parent": brand, "parenttype": "Brand"})
+        frappe.db.set_value("Company", self.company, "default_warehouse", None)
         frappe.clear_cache()
         frappe.clear_document_cache("Item", item_code)
+        frappe.clear_document_cache("Company", self.company)
 
     def other_warehouse(self):
-        return frappe.db.get_value("Warehouse", {
-            "company": self.company, "is_group": 0, "disabled": 0,
-            "name": ["!=", self.site_warehouse]}, "name")
+        """Any usable warehouse that is NOT the terminal fallback.
+
+        `self.site_warehouse` is a real warehouse name on a configured bench, but
+        it is a company field and may legitimately be empty; an `!=` filter built
+        from None is not a question worth asking, so the exclusion is simply
+        dropped in that case.
+        """
+
+        filters = {"company": self.company, "is_group": 0, "disabled": 0}
+        if self.site_warehouse:
+            filters["name"] = ["!=", self.site_warehouse]
+
+        return frappe.db.get_value("Warehouse", filters, "name")
+
+    def resolved_warehouse(self, item_code):
+        """The warehouse THIS transaction resolves to, asked of ERPNext.
+
+        A fixture that needs "the warehouse the order will draw on" must ask for
+        it rather than name whichever source happens to be configured. Naming the
+        source is what broke in 16.52.1; asking cannot break when the precedence
+        moves again, because it is the same call production makes.
+        """
+
+        from yob_storefront.services.pricing_context import context_for
+
+        return context_for(self.reload_customer()).resolved_warehouse(item_code)
 
     def set_bin_qty(self, item_code, warehouse, qty):
         from erpnext.stock.utils import get_bin
+
+        self.assertTrue(warehouse, "the fixture asked for a Bin with no warehouse")
 
         bin_doc = get_bin(item_code, warehouse)
         frappe.db.set_value("Bin", bin_doc.name, "actual_qty", qty)
@@ -367,12 +426,17 @@ class AvailabilitySemanticsCase(WarehouseBase):
             self.skipTest("this bench has only one non-group warehouse")
 
         item = self.make_item("_W5W-ELSEWHERE", warehouse=self.site_warehouse)
-        self.set_bin_qty(item, self.site_warehouse, 6)
+
+        resolved = self.resolved_warehouse(item)
+        self.assertEqual(resolved, self.site_warehouse,
+                         "the fixture did not pin the warehouse it meant to pin")
+
+        self.set_bin_qty(item, resolved, 6)
         self.set_bin_qty(item, other, 500)
 
         stock = self.availability(item)
 
-        self.assertEqual(stock["warehouse"], self.site_warehouse)
+        self.assertEqual(stock["warehouse"], resolved)
         self.assertEqual(stock["actual_qty"], 6.0,
                          "stock from another warehouse leaked into the product page")
 
@@ -422,8 +486,11 @@ class AvailabilitySemanticsCase(WarehouseBase):
         variant.insert(ignore_permissions=True)
         self.make_price(variant.name, 250)
 
-        self.set_bin_qty(variant.name, self.site_warehouse, 4)
-        self.set_bin_qty(template, self.site_warehouse, 99)
+        # Both Bins in the SAME warehouse: the only difference between them is
+        # the item code, which is exactly the claim under test.
+        warehouse = self.resolved_warehouse(variant.name)
+        self.set_bin_qty(variant.name, warehouse, 4)
+        self.set_bin_qty(template, warehouse, 99)
 
         stock = self.availability(variant.name)
 
@@ -673,6 +740,118 @@ class TransactionContextConvergenceCase(WarehouseBase):
         self.assertEqual(pricing["rate"], row.rate)
         self.assertEqual(cart.items[0].uom, "Box",
                          "the Cart did not record the unit it was priced in")
+
+
+# =========================================================
+# 6. WHERE THE FALLBACK LIVES (Phase 32F)
+# =========================================================
+
+class TerminalWarehouseFallbackCase(WarehouseBase):
+    """The LAST step of ERPNext's chain, pinned by source and by behaviour.
+
+    Phase 32F exists because that step moved. ERPNext 16.31.1 ended the chain at
+    the global `Stock Settings.default_warehouse`, used only when it belonged to
+    the transaction's company. 16.52.1 deleted that field and ended the chain at
+    the per-company `Company.default_warehouse` instead.
+
+    No YOB code reads either field -- production asks `get_item_details` and
+    inherits whatever it answers, which is why the move changed no storefront
+    behaviour. It broke only fixtures, and it broke them SILENTLY: reading a
+    fieldname a DocType no longer has returns None rather than raising, so
+    "there is no default warehouse" and "I asked the wrong question" became the
+    same answer. Five tests then built a `Bin` with no warehouse and three
+    described an unresolvable warehouse while quietly testing a resolved one.
+
+    These tests make the next such move fail loudly, and say why in the message.
+    """
+
+    def test_the_retired_stock_settings_field_is_gone(self):
+        """The reason the old fixtures broke, asserted rather than remembered."""
+
+        self.assertIsNone(
+            frappe.get_meta("Stock Settings").get_field("default_warehouse"),
+            "Stock Settings.default_warehouse is back -- re-check which source "
+            "get_item_warehouse_ actually ends on before trusting either")
+
+        self.assertIsNone(
+            frappe.get_single_value("Stock Settings", "default_warehouse"),
+            "a retired fieldname answered a value")
+
+    def test_company_default_is_the_terminal_fallback(self):
+        """An item with no default of its own lands on the Company warehouse."""
+
+        if not self.site_warehouse:
+            self.skipTest("this company has no default warehouse")
+
+        item = self.make_item("_W5W-FALLBACK")
+        frappe.db.delete("Item Default", {"parent": item})
+        frappe.clear_cache()
+        frappe.clear_document_cache("Item", item)
+
+        self.assertEqual(
+            self.resolved_warehouse(item), self.site_warehouse,
+            "the terminal fallback is no longer Company.default_warehouse")
+
+    def test_item_default_outranks_the_company_fallback(self):
+        """Precedence, not merely resolvability: the item's own default wins."""
+
+        other = self.other_warehouse()
+        if not (other and self.site_warehouse):
+            self.skipTest("this bench has only one usable warehouse")
+
+        item = self.make_item("_W5W-PRECEDENCE", warehouse=other)
+
+        self.assertEqual(self.resolved_warehouse(item), other,
+                         "the company fallback overrode a per-item default")
+
+    def test_absent_is_distinguishable_from_resolved(self):
+        """The two states this phase conflated, asserted side by side.
+
+        "Warehouse intentionally absent" and "warehouse resolved by ERPNext" must
+        be reachable at the same time and must not read alike, or a fixture can
+        land in one while describing the other -- which is exactly what happened
+        to three tests in this file.
+
+        Note what carries each state. `strip_default_warehouses` clears the
+        COMPANY fallback, which every item without a default of its own shares,
+        so the item that still resolves is the one holding its OWN default. That
+        is the precedence, not an accident of ordering.
+        """
+
+        if not self.site_warehouse:
+            self.skipTest("this company has no default warehouse")
+
+        resolved = self.make_item("_W5W-RESOLVED", warehouse=self.site_warehouse)
+        absent = self.make_item("_W5W-ABSENT")
+
+        self.strip_default_warehouses(absent)
+
+        self.assertIsNone(self.resolved_warehouse(absent),
+                          "strip_default_warehouses left a source still answering")
+        self.assertEqual(self.resolved_warehouse(resolved), self.site_warehouse,
+                         "a per-item default did not survive the company fallback "
+                         "being cleared")
+
+    def test_availability_reports_absent_and_resolved_differently(self):
+        """The same distinction as the storefront publishes it."""
+
+        if not self.site_warehouse:
+            self.skipTest("this company has no default warehouse")
+
+        resolved = self.make_item("_W5W-AVAIL-RESOLVED", warehouse=self.site_warehouse)
+        absent = self.make_item("_W5W-AVAIL-ABSENT")
+        self.strip_default_warehouses(absent)
+
+        on_resolved = self.availability(resolved)
+        on_absent = self.availability(absent)
+
+        self.assertEqual(on_resolved["warehouse"], self.site_warehouse)
+        self.assertEqual(on_resolved["actual_qty"], 0.0,
+                         "a resolved warehouse with no stock is zero, not unknown")
+
+        self.assertIsNone(on_absent["warehouse"])
+        self.assertIsNone(on_absent["actual_qty"],
+                          "an unresolved warehouse is unknown, not zero")
 
 
 if __name__ == "__main__":

@@ -467,12 +467,19 @@ class CrossStackScenarioCase(ContractBase):
     def test_price_uom_and_stock_belong_to_the_resolved_sku(self):
         from erpnext.stock.utils import get_bin
 
+        from yob_storefront.api.catalog import resolve_stock_availability
+
         template, variants = self.scenario()
         orange = variants[(self.values["orange"], self.values["medium"])]
         yellow = variants[(self.values["yellow"], self.values["large"])]
 
         # Stock and a selling unit that exist on ONE sibling only.
-        warehouse = frappe.get_single_value("Stock Settings", "default_warehouse")
+        # ERPNext's warehouse, asked of ERPNext. `Stock Settings.default_warehouse`
+        # used to be read here; 16.52.1 retired the field, `get_single_value`
+        # answered None for it without complaining, and the fixture then built a
+        # `Bin` with no warehouse (Phase 32F).
+        warehouse = resolve_stock_availability(self.customer, orange)["warehouse"]
+        self.assertTrue(warehouse, "ERPNext resolved no warehouse for this fixture")
         frappe.db.set_value("Bin", get_bin(orange, warehouse).name, "actual_qty", 12)
         frappe.db.set_value("Bin", get_bin(yellow, warehouse).name, "actual_qty", 99)
 

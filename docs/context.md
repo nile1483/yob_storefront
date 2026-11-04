@@ -592,8 +592,29 @@ get_item_details -> get_basic_details -> get_item_warehouse_
       -> Item Group default
         -> Brand default
           -> the row's own warehouse
-            -> Stock Settings default (only if it belongs to the same company)
+            -> `Company.default_warehouse`
 ```
+
+**The last step changed in ERPNext 16.52.1** (recorded in Phase 32F). Until
+16.31.1 the chain ended at the global `Stock Settings.default_warehouse`, and
+only when that warehouse belonged to the transaction's company. 16.52.1 removed
+the field from the DocType and ended the chain at the per-company
+`Company.default_warehouse` instead; the company guard went with it, because a
+per-company field cannot name another company's warehouse.
+
+Storefront behaviour did not change, because YOB reads neither field -- it asks
+`get_item_details` and inherits the answer. A warehouse is now resolved more
+often, though: 16.52.1 also made `Company.create_default_warehouses()` finish
+with `db_set("default_warehouse", <the company's Stores warehouse>)`, so every
+company created through ordinary ERPNext setup ends the chain somewhere. The old
+global setting had no such auto-population and was blank on this bench.
+
+The change reached only the test fixtures that had named the retired field
+directly, and it reached them silently: reading a fieldname a DocType no longer
+has returns `None` rather than raising, so "no default warehouse is configured"
+and "I asked the wrong question" became the same answer. `strip_default_warehouses`
+must therefore clear `Company.default_warehouse`, which is company-wide and shared
+by every item without a default of its own.
 
 Every storefront surface goes through it, and none of them reimplements it:
 
@@ -654,7 +675,7 @@ and the Cart still `Draft`.
 YOB deliberately does not invent a warehouse to fill that gap. Any value it chose
 would be a second precedence chain, and shipping from a warehouse the merchant
 never nominated is worse than refusing. The fix is merchant configuration -- an
-Item, Item Group, Brand or Stock Settings default.
+Item, Item Group, Brand or Company default warehouse.
 
 ### Preview vs Cart: one transaction, two builders
 
