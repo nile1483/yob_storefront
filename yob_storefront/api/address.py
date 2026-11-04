@@ -16,7 +16,7 @@ from yob_storefront.api.response import (
     server_error,
     success_response,
 )
-from yob_storefront.utils.cache import CUSTOMER_CACHE_PREFIX
+from yob_storefront.utils.cache import address_cache_key, contact_cache_key
 from frappe.utils import cint
 
 # ---------------------------------------------------------
@@ -222,13 +222,16 @@ def check_contact_owner(contact_name, customer):
 
 
 def get_contacts_cache_key(customer_name):
-    return f"{CUSTOMER_CACHE_PREFIX}{customer_name}:contacts"
+    # Delegated so the doc_event handler and these APIs cannot drift apart on
+    # the key shape -- two spellings would mean one of them silently clears
+    # nothing.
+    return contact_cache_key(customer_name)
 
 def clear_customer_contact_cache(customer_name):
     frappe.cache().delete_value(get_contacts_cache_key(customer_name))
 
 def get_addresses_cache_key(customer_name):
-    return f"{CUSTOMER_CACHE_PREFIX}{customer_name}:addresses"
+    return address_cache_key(customer_name)
 
 
 def clear_customer_address_cache(customer_name):

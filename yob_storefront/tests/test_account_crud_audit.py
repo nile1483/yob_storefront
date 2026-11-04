@@ -717,3 +717,203 @@ class LiveCartVersusOrderHistoryCase(AccountCrudCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# =========================================================================
+# PHASE 32E -- a BACKEND change must reach the storefront immediately
+# =========================================================================
+
+class BackendPartyChangeInvalidatesCase(AccountCrudCase):
+    """The gap the storefront APIs hid.
+
+    `ListCacheInvalidationCase` above proves a STOREFRONT write is visible on the
+    next read -- those endpoints clear the list cache themselves. Nothing cleared
+    it for a change made anywhere else: `hooks.py` had no `Address` doc_event at
+    all, and the `Contact` one called `clear_customer_cache`, which deletes
+    `yob:customer:<email>` and never touches `:addresses` or `:contacts`.
+
+    So an Address created in Desk, by a data import, by a patch or by
+    `bench execute` stayed invisible for the full 30-minute TTL, and the customer
+    could not see an address somebody had just added for them.
+
+    These tests write through the ORM the way Desk does -- no storefront endpoint
+    involved -- and assert the next storefront read already sees it.
+    """
+
+    OTHER = "_Test Storefront Customer A"
+
+    def addresses(self):
+        response = self.call(self.api.get_addresses)
+        self.assertNotIn("errors", response, f"listing failed: {response}")
+        return response["data"]
+
+    def contacts(self):
+        response = self.call(self.api.get_contacts)
+        self.assertNotIn("errors", response, f"listing failed: {response}")
+        return response["data"]
+
+    def desk_address(self, title, customer=CUSTOMER):
+        """Insert an Address exactly as Desk would -- plain ORM, no YOB API."""
+
+        doc = frappe.get_doc({
+            "doctype": "Address",
+            "address_title": title,
+            "address_type": "Billing",
+            "address_line1": "1 Desk Road",
+            "city": "Ahmedabad",
+            # India Compliance requires state + pincode on an Indian Address;
+            # omitting them fails in fixture setup, not in the code under test.
+            "state": "Gujarat",
+            "pincode": "382445",
+            "country": "India",
+            "links": [{"link_doctype": "Customer", "link_name": customer}],
+        })
+        doc.insert(ignore_permissions=True)
+        return doc
+
+    def desk_contact(self, first_name, customer=CUSTOMER):
+        doc = frappe.get_doc({
+            "doctype": "Contact",
+            "first_name": first_name,
+            "links": [{"link_doctype": "Customer", "link_name": customer}],
+        })
+        doc.insert(ignore_permissions=True)
+        return doc
+
+    # ------------------------------------------------------------- Address
+
+    def test_a_desk_created_address_appears_without_waiting_for_the_ttl(self):
+        self.addresses()                                   # prime the cache
+
+        created = self.desk_address("Desk Created")
+
+        listed = {r["name"] for r in self.addresses()}
+        self.assertIn(created.name, listed,
+                      "a backend-created Address was not visible until the "
+                      "30-minute cache expired")
+
+    def test_a_desk_edited_address_is_visible_immediately(self):
+        created = self.desk_address("Desk Edited")
+        self.addresses()                                   # prime AFTER creation
+
+        created.address_line1 = "2 Edited Road"
+        created.save(ignore_permissions=True)
+
+        row = next(r for r in self.addresses() if r["name"] == created.name)
+        self.assertEqual(row["address_line1"], "2 Edited Road",
+                         "the cached list outlived a backend edit")
+
+    def test_a_desk_deleted_address_disappears_immediately(self):
+        created = self.desk_address("Desk Deleted")
+        self.addresses()                                   # prime AFTER creation
+
+        frappe.delete_doc("Address", created.name, ignore_permissions=True, force=True)
+
+        self.assertNotIn(created.name, {r["name"] for r in self.addresses()},
+                         "a deleted Address was still listed from cache")
+
+    def test_relinking_an_address_clears_both_customers(self):
+        """A -> B must clear A (it left) and B (it arrived)."""
+
+        from yob_storefront.utils.cache import address_cache_key
+
+        if not frappe.db.exists("Customer", self.OTHER):
+            self.skipTest("second customer not seeded")
+
+        created = self.desk_address("Desk Relink")
+        self.addresses()                                   # prime A
+
+        frappe.cache().set_value(address_cache_key(self.OTHER), [{"name": "stale"}])
+
+        created.links = []
+        created.append("links", {"link_doctype": "Customer", "link_name": self.OTHER})
+        created.save(ignore_permissions=True)
+
+        self.assertIsNone(frappe.cache().get_value(address_cache_key(CUSTOMER)),
+                          "the previous owner's list survived the relink")
+        self.assertIsNone(frappe.cache().get_value(address_cache_key(self.OTHER)),
+                          "the new owner's list survived the relink")
+
+    def test_an_unrelated_customer_cache_is_left_alone(self):
+        """Customer-scoped, not a global flush."""
+
+        from yob_storefront.utils.cache import address_cache_key
+
+        third = "_Test Storefront Customer B"
+        if not frappe.db.exists("Customer", third):
+            self.skipTest("third customer not seeded")
+
+        sentinel = [{"name": "untouched"}]
+        frappe.cache().set_value(address_cache_key(third), sentinel)
+
+        self.desk_address("Desk Unrelated")
+
+        self.assertEqual(frappe.cache().get_value(address_cache_key(third)), sentinel,
+                         "an unrelated Customer's cache was flushed")
+
+    def test_a_non_customer_link_does_not_clear_a_customer_cache(self):
+        """Only Customer links drive the storefront cache."""
+
+        from yob_storefront.utils.cache import address_cache_key, clear_party_cache_from_links
+
+        sentinel = [{"name": "untouched"}]
+        frappe.cache().set_value(address_cache_key(CUSTOMER), sentinel)
+
+        supplier_only = frappe._dict(
+            links=[frappe._dict(link_doctype="Supplier", link_name=CUSTOMER)])
+        clear_party_cache_from_links(supplier_only)
+
+        self.assertEqual(frappe.cache().get_value(address_cache_key(CUSTOMER)), sentinel,
+                         "a Supplier link cleared a Customer's storefront cache")
+
+    # ------------------------------------------------------------- Contact
+
+    def test_a_desk_created_contact_appears_without_waiting_for_the_ttl(self):
+        self.contacts()                                    # prime the cache
+
+        created = self.desk_contact("DeskCreated")
+
+        self.assertIn(created.name, {r["name"] for r in self.contacts()},
+                      "a backend-created Contact was not visible until the TTL")
+
+    def test_a_desk_deleted_contact_disappears_immediately(self):
+        created = self.desk_contact("DeskDeleted")
+        self.contacts()                                    # prime AFTER creation
+
+        frappe.delete_doc("Contact", created.name, ignore_permissions=True, force=True)
+
+        self.assertNotIn(created.name, {r["name"] for r in self.contacts()},
+                         "a deleted Contact was still listed from cache")
+
+    def test_relinking_a_contact_clears_both_customers(self):
+        from yob_storefront.utils.cache import contact_cache_key
+
+        if not frappe.db.exists("Customer", self.OTHER):
+            self.skipTest("second customer not seeded")
+
+        created = self.desk_contact("DeskRelink")
+        self.contacts()                                    # prime A
+
+        frappe.cache().set_value(contact_cache_key(self.OTHER), [{"name": "stale"}])
+
+        created.links = []
+        created.append("links", {"link_doctype": "Customer", "link_name": self.OTHER})
+        created.save(ignore_permissions=True)
+
+        self.assertIsNone(frappe.cache().get_value(contact_cache_key(CUSTOMER)),
+                          "the previous owner's contact list survived the relink")
+        self.assertIsNone(frappe.cache().get_value(contact_cache_key(self.OTHER)),
+                          "the new owner's contact list survived the relink")
+
+    # ------------------------------------------------------------ isolation
+
+    def test_invalidation_never_leaks_another_customers_rows(self):
+        """Clearing a cache must not widen what a customer can read."""
+
+        if not frappe.db.exists("Customer", self.OTHER):
+            self.skipTest("second customer not seeded")
+
+        theirs = self.desk_address("Desk Theirs", customer=self.OTHER)
+
+        self.assertNotIn(theirs.name, {r["name"] for r in self.addresses()},
+                         "another Customer's Address appeared after invalidation")

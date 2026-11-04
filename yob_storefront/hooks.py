@@ -213,10 +213,39 @@ doc_events = {
         "after_insert": "yob_storefront.utils.cache.clear_customer_cache"
     },
 
+    # TWO CACHES, TWO HANDLERS -- both are needed and neither replaces the other.
+    #
+    #   clear_customer_cache          `yob:customer:<email>`  -- the email ->
+    #                                 Customer resolution. A Contact's email IS
+    #                                 that mapping, so it must still be cleared.
+    #   clear_party_cache_from_links  `yob:customer:<customer>:contacts` and
+    #                                 `:addresses` -- the storefront list caches.
+    #
+    # Before Phase 32E only the first existed here, so a Contact edited in Desk
+    # left the storefront's contact list stale for its full 30-minute TTL.
     "Contact": {
-        "on_update": "yob_storefront.utils.cache.clear_customer_cache",
-        "after_insert": "yob_storefront.utils.cache.clear_customer_cache",
-        "on_trash": "yob_storefront.utils.cache.clear_customer_cache"
+        "on_update": [
+            "yob_storefront.utils.cache.clear_customer_cache",
+            "yob_storefront.utils.cache.clear_party_cache_from_links",
+        ],
+        "after_insert": [
+            "yob_storefront.utils.cache.clear_customer_cache",
+            "yob_storefront.utils.cache.clear_party_cache_from_links",
+        ],
+        "on_trash": [
+            "yob_storefront.utils.cache.clear_customer_cache",
+            "yob_storefront.utils.cache.clear_party_cache_from_links",
+        ],
+    },
+
+    # Address had NO doc_event at all before Phase 32E, which is why a Desk
+    # address never reached the storefront until the cache expired. `on_trash`
+    # rather than `after_delete`: the links are still readable at that point,
+    # and after deletion there is nothing left to tell us whose list changed.
+    "Address": {
+        "on_update": "yob_storefront.utils.cache.clear_party_cache_from_links",
+        "after_insert": "yob_storefront.utils.cache.clear_party_cache_from_links",
+        "on_trash": "yob_storefront.utils.cache.clear_party_cache_from_links",
     },
 
     # ---------------- ITEM ----------------
