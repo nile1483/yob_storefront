@@ -35,7 +35,12 @@ add_to_apps_screen = [
 		"name": "yob_storefront",
 		"logo": "/assets/yob_storefront/logo.png",
 		"title": "YOB Storefront",
-		"route": "/desk/yob_storefront"
+		# `yob-storefront`, not `yob_storefront`: the desk keys its workspace map
+		# with `frappe.router.slug(name)` (frappe/public/js/frappe/desk.js), and
+		# slug() lowercases and turns SPACES INTO HYPHENS. The Workspace is
+		# "YOB Storefront", so an underscored route matches no workspace and the
+		# app icon opens nothing.
+		"route": "/desk/yob-storefront"
 	}
 ]
 

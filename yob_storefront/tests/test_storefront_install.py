@@ -233,42 +233,67 @@ class InstallCase(unittest.TestCase):
             self.assertIn(doctype, targets, f"the pre-existing {doctype} link was lost")
 
     def test_the_sidebar_source_is_app_owned_and_synchronises(self):
-        """The file must be where Frappe looks, and newer than the stored row.
+        """The sidebar ships from source, at the path Frappe 16.53 imports.
 
-        `sync_for` reads `workspace_sidebar` as an APP-LEVEL folder, and
-        `import_file_by_path` SKIPS a non-DocType record whose file `modified` is
-        not newer than the row already in the database. An edit that forgets to
-        bump the timestamp installs on a fresh site and silently does nothing on
-        every existing one -- which is exactly the failure mode a merchant sees.
+        Frappe 16.53 retired the app-level `workspace_sidebar/` folder: a sidebar
+        belongs to a MODULE now and ships under `<app>/<module>/sidebar/`. An app
+        that kept the old folder got a sidebar GENERATED from its module contents
+        instead -- which is how `test.localhost` silently lost the whole Target
+        Management group while the app still shipped it.
+
+        The Phase 31 timestamp trap does not apply to this format: the export
+        carries no `modified`, so there is no stale-timestamp skip to forget.
+        What replaces that check is `standard = 1` -- proof the stored row came
+        from app source rather than from a site-local merge.
         """
 
         import json
         import pathlib
 
         path = (pathlib.Path(frappe.get_app_path("yob_storefront"))
-                / "workspace_sidebar" / "yob_storefront.json")
+                / "yob_storefront" / "sidebar" / "yob_storefront"
+                / "yob_storefront.json")
 
         self.assertTrue(path.exists(),
-                        "the sidebar is not at the app-level path Frappe imports")
+                        "the sidebar is not at the module path Frappe 16.53 imports")
 
         source = json.loads(path.read_text())
 
-        self.assertEqual(source["doctype"], "Workspace Sidebar")
+        self.assertEqual(source["doctype"], "Sidebar")
         self.assertEqual(source["name"], "YOB Storefront")
+        self.assertEqual(source["module"], "yob_storefront")
+        self.assertEqual(source["standard"], 1, "the shipped sidebar is not app-owned")
 
         source_groups = {i.get("label") for i in source["items"]
                          if i.get("type") == "Section Break"}
+
         for group in self.PHASE_25_GROUPS:
             self.assertIn(group, source_groups, f"the SOURCE file has no {group} group")
 
-        stored = frappe.db.get_value("Workspace Sidebar", "YOB Storefront", "modified")
+        self.assertIn("Target Management", source_groups,
+                      "the Target Management group left the shipped sidebar")
 
-        if stored:
-            self.assertLessEqual(
-                frappe.utils.get_datetime(stored),
-                frappe.utils.get_datetime(source["modified"]),
-                "the stored sidebar is NEWER than the source file, so `bench migrate` "
-                "will skip it -- bump `modified` in the JSON")
+        stored_standard = frappe.db.get_value("Sidebar", "YOB Storefront", "standard")
+
+        if stored_standard is not None:
+            self.assertEqual(
+                stored_standard, 1,
+                "the stored sidebar is site-local, so app changes will not reach it")
+
+    def test_the_retired_sidebar_fixture_is_gone(self):
+        """One navigation source, not two.
+
+        Leaving `workspace_sidebar/` beside the module export would keep a second,
+        silently-ignored definition in the tree for somebody to edit by mistake.
+        """
+
+        import pathlib
+
+        legacy = (pathlib.Path(frappe.get_app_path("yob_storefront"))
+                  / "workspace_sidebar")
+
+        self.assertFalse(legacy.exists(),
+                         "the retired workspace_sidebar fixture is still shipped")
 
     def test_only_one_storefront_workspace_exists(self):
         self.assertEqual(
