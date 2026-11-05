@@ -25,7 +25,7 @@ from yob_storefront.api.response import (
 )
 from yob_auth.security.decorators import require_application
 from yob_storefront.utils.context import STOREFRONT_APP, get_storefront_customer
-from erpnext.setup.doctype.company.company import get_default_company_address
+from frappe.contacts.doctype.address.address import get_company_address
 from yob_storefront.services.cart_service import ( 
     reprice_cart,
     validate_cart_expiry
@@ -51,7 +51,27 @@ def get_or_create_cart(customer):
 
     settings = get_store_settings()
 
-    company_address = get_default_company_address(settings.company)
+    # Frappe's own non-whitelisted resolver, which is what ERPNext itself uses
+    # for exactly this -- `accounts/party.py:259`, `sales_order.py:1293/1518`
+    # and `delivery_note.py:1037` all call `get_company_address(company)` when a
+    # controller needs a company's address.
+    #
+    # This replaced `erpnext...company.get_default_company_address`, which is
+    # `@frappe.whitelist()` and since 16.52.1 gates on
+    # `has_permission("Company", "select", doc=name)`. A storefront buyer holds
+    # no Company permission, so a buyer with no Cart yet could not create one --
+    # first-run only, which is why no existing account ever showed it
+    # (Phase 32H).
+    #
+    # Semantics are preserved, not approximated: a primary address wins whatever
+    # order the addresses were created in, a non-primary is still returned when
+    # no primary exists, disabled addresses are excluded, and no address answers
+    # None. Each of those is asserted in
+    # `tests/test_trusted_pricing_context.py::CompanyAddressParityCase`.
+    #
+    # `settings.company` is YOB Store Settings -- server configuration. No
+    # request value reaches it.
+    company_address = get_company_address(settings.company).company_address
 
     cart = frappe.get_doc(
         {

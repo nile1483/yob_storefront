@@ -85,7 +85,25 @@ class SellingContext:
         genuine fault behind a silently missing value.
         """
 
-        from erpnext.stock.get_item_details import get_item_details
+        # ERPNext's INTERNAL entry point, which is what its own controllers use
+        # for a context they built themselves (`accounts_controller`,
+        # `transaction_base`, `item`, `bom`).
+        #
+        # `get_item_details` -- no underscore -- is the BROWSER-facing
+        # `@frappe.whitelist()` API, and since 16.52.1 it opens with
+        # `validate_pricing_context()`, which authorises the transaction
+        # doctype/name, the party and the price list a CLIENT named: it calls
+        # `has_permission("Sales Order")`, `has_permission("Customer", "select")`
+        # and a price-list side check. Correct for a request whose context is
+        # attacker-controlled; wrong for this one, where every field below is
+        # server-derived and a storefront buyer legitimately holds none of those
+        # permissions. Calling it here answered PermissionError on every product
+        # page (Phase 32H).
+        #
+        # The gate is not being evaded, it is being answered elsewhere: see
+        # `tests/test_trusted_pricing_context.py`, which proves the browser
+        # cannot choose the doctype, the Customer or the price list.
+        from erpnext.stock.get_item_details import _get_item_details
 
         args = frappe._dict({
             "item_code": item_code,
@@ -102,7 +120,7 @@ class SellingContext:
             "ignore_pricing_rule": 1,
         })
         try:
-            return get_item_details(args, doc=None, for_validate=True)
+            return _get_item_details(args, doc=None, for_validate=True)
         except (frappe.ValidationError, frappe.DoesNotExistError):
             return None
 
