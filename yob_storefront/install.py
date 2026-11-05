@@ -78,6 +78,9 @@ def ensure_payment_processor_identity():
     # Customer, Address, Contact and Sales Order are deliberately absent: the
     # Sales Order's own flags.ignore_permissions already covers the party path,
     # and the tests pass without them.
+    #
+    # `Sales Taxes and Charges Template` is granted SELECT below, separately,
+    # because it needs `select` and not `read`.
     for doctype in ("Item", "Account"):
         if frappe.db.exists("Custom DocPerm",
                             {"parent": doctype, "role": PAYMENT_PROCESSOR_ROLE}):
@@ -100,6 +103,59 @@ def ensure_payment_processor_identity():
             {"read": 1, "export": 0, "write": 0, "create": 0, "delete": 0,
              "report": 0, "share": 0, "print": 0, "email": 0},
         )
+
+    # SELECT, NOT READ -- the same gate Phase 32B cleared for the storefront
+    # BUYER, reached again here as the processor (Phase 32J).
+    #
+    # ERPNext 16.52.1 added `erpnext.require_permission()`, and India
+    # Compliance's regional address hook reaches it on a GST-registered company:
+    #
+    #   party.py:304 set_address_details -> get_regional_address_details
+    #     -> india_compliance transaction.py:942 get_gst_details
+    #        -> accounts_controller.py:3648 get_taxes_and_charges
+    #           -> require_permission("Sales Taxes and Charges Template",
+    #                                 <template>, "select")
+    #
+    # Phase 32C's commitment runs inside `trusted_execution()`, so the user at
+    # that line is this identity, not the buyer -- and the buyer's own Phase 32B
+    # grant does nothing for it. Proceed to Payment therefore answered
+    # PermissionError for every real buyer on a GST-registered company.
+    #
+    # `select` is the minimum the gate asks for: ERPNext only has to resolve the
+    # template link, and the processor never reads its rows or exports it.
+    # Granting `read` instead would hand this identity the whole tax master for
+    # no reason.
+    for doctype in ("Sales Taxes and Charges Template",):
+        from frappe.permissions import setup_custom_perms
+
+        # setup_custom_perms FIRST, for the reason documented above: a single
+        # Custom DocPerm replaces the DocType's entire permission set, so
+        # inserting ours without copying the standard rows first would strip
+        # Accounts Manager and every other built-in role off the tax master.
+        setup_custom_perms(doctype)
+
+        if frappe.db.exists("Custom DocPerm",
+                            {"parent": doctype, "role": PAYMENT_PROCESSOR_ROLE}):
+            continue
+
+        frappe.get_doc({
+            "doctype": "Custom DocPerm",
+            "parent": doctype,
+            "parenttype": "DocType",
+            "parentfield": "permissions",
+            "role": PAYMENT_PROCESSOR_ROLE,
+            "permlevel": 0,
+            "select": 1,
+            "read": 0,
+            "export": 0,
+            "write": 0,
+            "create": 0,
+            "delete": 0,
+            "report": 0,
+            "share": 0,
+            "print": 0,
+            "email": 0,
+        }).insert(ignore_permissions=True)
 
     if not frappe.db.exists("User", PAYMENT_PROCESSOR_USER):
         user = frappe.get_doc({
@@ -496,6 +552,13 @@ def after_migrate():
     ensure_role_and_permissions()
     ensure_custom_fields()
     ensure_payment_gateways()
+    # Added in Phase 32J. This was the only provisioning function missing from
+    # `after_migrate`, which is why the processor's tax-template `select` grant
+    # could not reach a site that already existed -- exactly the failure mode
+    # this docstring describes for the buyer role one line above. It is
+    # idempotent: every block inside guards on existence, so a site that already
+    # has the identity, the role, the DocPerms and the Has Role does no work.
+    ensure_payment_processor_identity()
     ensure_target_constraints()
 
 

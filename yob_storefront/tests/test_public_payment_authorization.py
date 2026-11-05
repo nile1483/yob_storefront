@@ -354,23 +354,67 @@ class ProcessorIdentityCase(unittest.TestCase):
     def test_role_has_no_desk_access(self):
         self.assertEqual(frappe.db.get_value("Role", self.ROLE, "desk_access"), 0)
 
-    def test_permissions_are_exactly_read_on_item_and_account(self):
-        """The proven minimum. Anything more must be justified by a test."""
+    def test_permissions_are_exactly_the_proven_minimum(self):
+        """The proven minimum. Anything more must be justified by a test.
+
+        Each entry was added only after a failing test proved the commitment
+        path needs it:
+
+            Item      read    `get_item_details` loads its own cached Item and
+                              calls `item.check_permission()`.
+            Account   read    ERPNext tax/party resolution reads the tax Account.
+            Sales Taxes and Charges Template
+                      SELECT  Phase 32J. ERPNext 16.52.1's
+                              `require_permission(..., "select")` is reached
+                              through India Compliance's regional address hook on
+                              a GST-REGISTERED company, and the commitment runs
+                              as this identity -- so the buyer's own Phase 32B
+                              grant does nothing for it and Proceed to Payment
+                              answered PermissionError for every real buyer.
+                              `select` is the whole gate; `read` would hand this
+                              identity the tax master for no reason, and the
+                              assertion below pins that distinction.
+
+        `select` is now collected. It previously was NOT, so a `select` grant on
+        ANY DocType was invisible to this guard -- the one permission type the
+        storefront actually needs to hand out was the one it could not see.
+        """
 
         granted = {}
 
         for row in frappe.get_all(
             "Custom DocPerm", filters={"role": self.ROLE},
-            fields=["parent", "read", "write", "create", "delete", "export",
-                    "report", "share", "print", "email", "permlevel"],
+            fields=["parent", "read", "select", "write", "create", "delete",
+                    "export", "report", "share", "print", "email", "permlevel"],
         ):
             granted[row.parent] = {
                 k: v for k, v in row.items()
                 if k not in ("parent", "name", "permlevel") and v
             }
 
-        self.assertEqual(granted, {"Item": {"read": 1}, "Account": {"read": 1}},
-                         f"processor role permissions drifted: {granted}")
+        self.assertEqual(
+            granted,
+            {
+                "Item": {"read": 1},
+                "Account": {"read": 1},
+                "Sales Taxes and Charges Template": {"select": 1},
+            },
+            f"processor role permissions drifted: {granted}")
+
+    def test_the_tax_template_grant_is_select_and_not_read(self):
+        """Pinned separately, because the two are easy to confuse.
+
+        A `read` grant would satisfy the same ERPNext gate while giving this
+        identity the entire tax master, so the narrowness is the point rather
+        than an implementation detail.
+        """
+
+        row = frappe.db.get_value(
+            "Custom DocPerm",
+            {"role": self.ROLE, "parent": "Sales Taxes and Charges Template"},
+            ["read", "select", "export", "write"], as_dict=True)
+
+        self.assertEqual(row, {"read": 0, "select": 1, "export": 0, "write": 0})
 
     def test_party_doctypes_are_not_granted(self):
         """Covered by the Sales Order's own flag; must stay ungranted."""
