@@ -427,6 +427,61 @@ def ensure_custom_fields():
                     ),
                 },
             ],
+            # ------------------------------------------------------------------
+            # CUSTOMER -- the YOB Storefront Users panel inside ERPNext's own
+            # Portal Users tab.
+            #
+            # `portal_users` is the LAST field of that tab, so inserting after it
+            # places this section inside the tab without touching ERPNext's
+            # `customer.json` -- which YOB must never edit.
+            #
+            # An HTML field, not a child table. A child table here would be a
+            # second persisted copy of `YOB User Application Access` that
+            # Customer saves and has to reconcile on every save, and two copies
+            # of a security grant that can disagree is a security bug. The panel
+            # is rendered by `customer_storefront_users.js`, reads the access
+            # records live on every open, and writes only through
+            # `desk.storefront_users`.
+            #
+            # ERPNext's own Portal Users table is untouched and keeps working as
+            # it does today: it grants the ERPNext `Customer` portal role and
+            # links Users to Contacts, neither of which creates storefront
+            # access. The two sections are independent.
+            # ------------------------------------------------------------------
+            "Customer": [
+                {
+                    "fieldname": "custom_yob_storefront_users_section",
+                    "label": "YOB Storefront Users",
+                    "fieldtype": "Section Break",
+                    # Anchored on the TAB, not on `portal_users`, and that is not
+                    # a style choice. `Meta.sort_fields` resolves a Section Break
+                    # custom field by scanning FORWARD from `insert_after` for the
+                    # end of the current section -- and it stops only at a Section
+                    # Break or at a field of the anchor's own fieldtype
+                    # (frappe/model/meta.py:600-607). A Tab Break is neither, so
+                    # anchoring on `portal_users` -- the LAST field of the Portal
+                    # Users tab -- made the scan walk straight through
+                    # `more_info_tab` and drop this section into the More Info
+                    # tab. Verified on this bench before the fix.
+                    #
+                    # Anchoring on `portal_users_tab` makes the anchor's fieldtype
+                    # Tab Break, so the same scan stops at the NEXT Tab Break and
+                    # resolves to `portal_users` -- the position actually wanted.
+                    "insert_after": "portal_users_tab",
+                },
+                {
+                    "fieldname": "custom_yob_storefront_users_html",
+                    "label": "YOB Storefront Users",
+                    "fieldtype": "HTML",
+                    "insert_after": "custom_yob_storefront_users_section",
+                    "description": (
+                        "Users with STOREFRONT access to this Customer. Stored in "
+                        "YOB User Application Access, which stays the only source "
+                        "of truth; the YOB Storefront Buyer role is granted and "
+                        "revoked by its own hooks."
+                    ),
+                },
+            ],
             "Payment Request": [
                 {
                     "fieldname": "custom_cart",

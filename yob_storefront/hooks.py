@@ -59,7 +59,16 @@ doctype_js = {
     # Customer gains a Target Management entry point (Phase 31A). A toolbar
     # button rather than `override_doctype_dashboards`, which would replace
     # ERPNext's whole Customer connections panel to add one YOB link.
-    "Customer": "public/js/customer_target_management.js",
+    # A list for the same reason as Item below: two independent Customer
+    # concerns, loaded together by Frappe without either owning the other.
+    "Customer": [
+        "public/js/customer_target_management.js",
+        # Portal Users tab -> YOB Storefront Users. Renders an HTML custom field;
+        # it persists nothing on Customer and writes only through
+        # `desk.storefront_users`, so `YOB User Application Access` stays the one
+        # source of truth and its role-sync hooks stay in charge of the role.
+        "public/js/customer_storefront_users.js",
+    ],
     # A list: Frappe accumulates doctype_js values and loads every file, so the
     # filter grid helper and the Product Content launcher stay separate concerns.
     "Item": [
@@ -195,7 +204,13 @@ doc_events = {
     "YOB User Application Access": {
         "after_insert": "yob_storefront.permissions.storefront_role.on_application_access_update",
         "on_update": "yob_storefront.permissions.storefront_role.on_application_access_update",
-        "on_trash": "yob_storefront.permissions.storefront_role.on_application_access_trash",
+        # after_delete, NOT on_trash. `frappe/model/delete_doc.py` runs
+        # `on_trash` at line 176 and `delete_from_table` only at line 195, so a
+        # handler that RECOMPUTES from the remaining rows still sees the row
+        # being deleted and concludes the grant survives -- the buyer role was
+        # never revoked on delete. `after_delete` runs at line 196, immediately
+        # after the row is gone, which is the state this handler needs.
+        "after_delete": "yob_storefront.permissions.storefront_role.on_application_access_trash",
     },
 
     "File": {

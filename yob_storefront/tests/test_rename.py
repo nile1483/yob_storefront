@@ -201,6 +201,22 @@ class TestEndpointProtection(unittest.TestCase):
         # read access to the DocType that uses them.
         "get_route_options",
         "get_slot_options",
+        # Customer > YOB Storefront Users. Desk administration of storefront
+        # access, so the posture is DocType permissions rather than storefront
+        # application access -- a storefront buyer must never reach these, and
+        # `require_application` would be the wrong boundary because it authorises
+        # a BUYER rather than an operator. Each one checks both the Customer and
+        # `YOB User Application Access` (System Manager only); see
+        # `desk/storefront_users.py::_assert_may_read` / `_assert_may_write`.
+        #
+        # This set asserts only that the FILE mentions `frappe.has_permission`.
+        # The per-function check, plus the buyer-refusal tests, live in
+        # `test_customer_storefront_users.py::StorefrontUserPermissionCase`.
+        "list_storefront_users",
+        "add_storefront_user",
+        "create_storefront_user",
+        "update_storefront_user",
+        "remove_storefront_user",
     }
 
     def _endpoints(self):

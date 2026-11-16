@@ -175,7 +175,16 @@ def on_application_access_update(doc, method=None):
 
 
 def on_application_access_trash(doc, method=None):
-    """The row is gone by the time we recompute, so this is still correct."""
+    """Recompute after the row is gone, so the deleted grant is not counted.
+
+    Registered on ``after_delete``, not ``on_trash``. This function answers
+    "which grants does this user still have?" by querying the table, and
+    ``on_trash`` runs BEFORE ``delete_from_table`` -- so the row being deleted
+    was still there to be found, the answer came back "one", and the buyer role
+    survived a delete that was supposed to revoke it. The name is kept because
+    it is the access record's trash handler conceptually; only the moment it
+    fires has been corrected.
+    """
 
     if doc.application != STOREFRONT_APP_CODE:
         return
