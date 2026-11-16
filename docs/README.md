@@ -22,11 +22,17 @@ precedence. Read the platform `AGENTS.md` and `context.md`, then this app's
 | Change a published endpoint, parameter, or error code | `contracts/api-compatibility.md`, `contracts/error-catalog.md` |
 | Desk navigation, Workspace, or sidebar change | `doctypes.md`, plus platform `workspaces.md` |
 | Release or migration | `open-items.md`, plus platform `deployment.md` and `migration-plan.md` |
+| **Stand up a new storefront site** | `site-setup.md` |
+| **Onboard a new customer** | `customer-onboarding.md` |
+| **Judge what is and is not tested** | `verification-status.md` |
 
 ## Document purposes
 
 | Document | It answers |
 | --- | --- |
+| **`site-setup.md`** | **What must be configured ONCE for a new storefront site?** (apps, versions, proxy, install automation, company, pricing, catalogue, warehouse, GST, payment, auth, scheduler) |
+| **`customer-onboarding.md`** | **What does staff do EVERY time a customer is added?** The four-record SOP via Customer -> Portal Users -> YOB Storefront Users, plus the one-page checklist |
+| **`verification-status.md`** | **What is actually tested, what is not, and is onboarding production-ready?** |
 | `context.md` | What does Storefront own, and what stays dependency-owned? |
 | `architecture.md` | How do the existing entry points, data model, and flows actually work? |
 | `doctypes.md` | Which Storefront DocTypes exist and how are they navigated? |
