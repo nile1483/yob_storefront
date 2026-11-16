@@ -75,13 +75,30 @@ COMPANY_GSTIN = "24AEQPV5389F1ZS"
 
 TAX_TEMPLATE_DOCTYPE = "Sales Taxes and Charges Template"
 
+#: The out-of-state jurisdiction (Phase 33). Gujarat is 24, Maharashtra is 27,
+#: so a customer address here makes the transaction inter-state and India
+#: Compliance must resolve IGST instead of CGST+SGST. The address carries NO
+#: GSTIN: an unregistered customer still pays IGST out of state, which is also
+#: the Phase 33 finding that the ADDRESS STATE -- not the customer's
+#: `gst_category` -- decides the rate.
+OUT_OF_STATE = "Maharashtra"
+OUT_OF_STATE_CITY = "Mumbai"
+OUT_OF_STATE_PINCODE = "400001"
+
 
 def _seeded() -> bool:
     return bool(frappe.db.exists("Customer", CUSTOMER) and frappe.db.exists("Item", ITEM))
 
 
-class ProceedToPaymentBuyerCase(unittest.TestCase):
-    """The Proceed endpoint, as a Website User, on a GST-registered company."""
+class ProceedFixture:
+    """The shared, GST-armed, real-buyer fixture.
+
+    Extracted unchanged when Phase 33 added the out-of-state case below: both
+    jurisdictions need the same company registration, the same throwaway commit
+    patch and the same real Website User, and two copies of that would be two
+    chances to arm only one of them. It is a plain mixin, not a TestCase, so it
+    contributes no tests of its own.
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -189,6 +206,15 @@ class ProceedToPaymentBuyerCase(unittest.TestCase):
 
         self.assertIn(STOREFRONT_BUYER_ROLE, frappe.get_roles())
         self.assertEqual(frappe.db.get_value("User", BUYER, "user_type"), "Website User")
+
+
+class ProceedToPaymentBuyerCase(ProceedFixture, unittest.TestCase):
+    """The Proceed endpoint, as a Website User, on a GST-registered company.
+
+    IN-STATE: company and customer are both in Gujarat, so India Compliance
+    resolves the in-state template and CGST+SGST. The out-of-state counterpart
+    is `ProceedToPaymentOutOfStateCase` below.
+    """
 
     # ------------------------------------------------------------- the guard
 
@@ -424,6 +450,216 @@ class ProceedToPaymentBuyerCase(unittest.TestCase):
                         "the superseded attempt was deleted rather than retained")
         self.assertNotEqual(old.reference_name, new.reference_name)
         self.assertGreater(new.grand_total, old.grand_total)
+
+
+class ProceedToPaymentOutOfStateCase(ProceedFixture, unittest.TestCase):
+    """The same real Proceed, inter-state: IGST instead of CGST+SGST.
+
+    WHY THIS EXISTS
+    ---------------
+    Everything the in-state case proves about the permission gate it proves with
+    ONE tax treatment. The Phase 33 audit recorded out-of-state GST as reachable
+    only by hand, and it is a different code path in India Compliance: a
+    different template, a different account, and a `place_of_supply` derived
+    from the customer's address rather than the company's.
+
+    It is also the case that distinguishes two explanations of the in-state
+    result. If the storefront were somehow pinning a template, both
+    jurisdictions would answer the same way; they do not, and the only thing
+    this fixture changes is the customer's address state.
+
+    The company fixture is identical to the in-state case -- same Gujarat
+    registration, same GSTIN -- and is rolled back with everything else.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.addresses = self.customer_addresses_out_of_state()
+
+    # --------------------------------------------------------------- fixture
+
+    def customer_addresses_out_of_state(self):
+        """A billing and a shipping address for the customer, in Maharashtra.
+
+        New addresses rather than edits to the seeded Gujarat ones: an Address
+        is shared with the Cart, the Contact and the order history, and
+        rewriting the demo data's jurisdiction in place would change what every
+        other module in the suite is looking at.
+        """
+
+        created = {}
+        for kind in ("Billing", "Shipping"):
+            doc = frappe.get_doc({
+                "doctype": "Address", "address_title": f"_33 OOS {kind}",
+                "address_type": kind, "address_line1": "9 Marine Drive",
+                "city": OUT_OF_STATE_CITY, "state": OUT_OF_STATE,
+                "pincode": OUT_OF_STATE_PINCODE, "country": "India",
+                # Unregistered and GSTIN-less on purpose; see OUT_OF_STATE.
+                "gst_category": "Unregistered",
+                "links": [{"link_doctype": "Customer", "link_name": CUSTOMER}],
+            }).insert(ignore_permissions=True)
+            created[kind] = doc.name
+        frappe.clear_cache()
+        return created
+
+    def make_cart(self, qty=3):
+        """The parent cart, pointed at the out-of-state addresses."""
+
+        from yob_storefront.api.cart import get_or_create_cart
+        from yob_storefront.services.cart_service import reprice_cart
+
+        cart = get_or_create_cart(self.customer)
+        cart.set("items", [])
+        cart.append("items", {"item_code": ITEM, "quantity": qty})
+        cart.contact_person = CONTACT
+        cart.billing_address = self.addresses["Billing"]
+        cart.shipping_address = self.addresses["Shipping"]
+        reprice_cart(cart, self.customer)
+        cart.save(ignore_permissions=True)
+        return cart
+
+    # ----------------------------------------------------------- the guard
+
+    def test_the_fixture_really_produces_an_inter_state_transaction(self):
+        """Without this, every assertion below could be passing in-state."""
+
+        from yob_storefront.services.pricing_service import (
+            calculate_cart_using_sales_order,
+        )
+
+        self.assertEqual(
+            frappe.db.get_value("Company", self.company, "gst_category"),
+            "Registered Regular")
+
+        cart = self.make_cart()
+        priced = calculate_cart_using_sales_order(cart, self.customer)
+
+        self.assertTrue(priced.taxes_and_charges, "no tax template resolved")
+        self.assertIn("Out-state", priced.taxes_and_charges,
+                      f"an in-state template resolved: {priced.taxes_and_charges}")
+        self.assertTrue(priced.taxes, "the priced order carries no tax rows")
+
+    # ------------------------------------------------------- THE REGRESSION
+
+    def test_a_real_buyer_can_proceed_out_of_state(self):
+        self.make_cart()
+        self.as_buyer()
+
+        response = self.proceed()
+
+        self.assertNotIn("errors", response, f"Proceed failed: {response}")
+        data = response["data"]
+        self.assertTrue(data["payment_request"])
+        self.assertTrue(data["token"])
+        self.assert_still_unprivileged()
+
+    def test_the_attempt_selected_the_out_of_state_template(self):
+        self.make_cart()
+        self.as_buyer()
+
+        data = self.proceed()["data"]
+
+        frappe.set_user("Administrator")
+        pr = frappe.get_doc("Payment Request", data["payment_request"])
+        so = frappe.get_doc("Sales Order", pr.reference_name)
+
+        self.assertTrue(so.taxes_and_charges, "no tax template reached the attempt")
+        self.assertIn("Out-state", so.taxes_and_charges)
+        self.assertNotIn("In-state", so.taxes_and_charges)
+        self.assertTrue(frappe.db.exists(TAX_TEMPLATE_DOCTYPE, so.taxes_and_charges))
+
+    def test_the_attempt_carries_igst_and_neither_cgst_nor_sgst(self):
+        self.make_cart()
+        self.as_buyer()
+
+        data = self.proceed()["data"]
+
+        frappe.set_user("Administrator")
+        pr = frappe.get_doc("Payment Request", data["payment_request"])
+        so = frappe.get_doc("Sales Order", pr.reference_name)
+
+        self.assertTrue(so.taxes, "the attempt carries no tax rows")
+        types = {(row.get("gst_tax_type") or "").lower() for row in so.taxes}
+
+        self.assertIn("igst", types, f"no IGST row on an inter-state order: {types}")
+        self.assertNotIn("cgst", types, "CGST was charged on an inter-state order")
+        self.assertNotIn("sgst", types, "SGST was charged on an inter-state order")
+        self.assertGreater(sum(row.tax_amount for row in so.taxes), 0)
+
+    def test_the_place_of_supply_follows_the_customer_address(self):
+        """The Phase 33 finding, asserted: the ADDRESS STATE decides the rate."""
+
+        self.make_cart()
+        self.as_buyer()
+
+        data = self.proceed()["data"]
+
+        frappe.set_user("Administrator")
+        pr = frappe.get_doc("Payment Request", data["payment_request"])
+        so = frappe.get_doc("Sales Order", pr.reference_name)
+
+        self.assertIn(OUT_OF_STATE, so.get("place_of_supply") or "",
+                      f"place_of_supply is {so.get('place_of_supply')!r}, not the "
+                      "customer's own state")
+
+    def test_amounts_match_across_cart_sales_order_and_payment_request(self):
+        """Parity must hold under IGST exactly as it does in-state."""
+
+        cart = self.make_cart()
+        self.as_buyer()
+
+        data = self.proceed()["data"]
+
+        frappe.set_user("Administrator")
+        pr = frappe.get_doc("Payment Request", data["payment_request"])
+        so = frappe.get_doc("Sales Order", pr.reference_name)
+        cart.reload()
+
+        self.assertEqual(cart.grand_total, so.grand_total)
+        self.assertEqual(so.grand_total, pr.grand_total)
+        self.assertEqual(pr.currency, cart.currency)
+
+    def test_the_processor_permission_boundary_still_holds(self):
+        """The inter-state template is a different document; `select` must cover it."""
+
+        self.make_cart()
+        self.as_buyer()
+
+        data = self.proceed()["data"]
+
+        frappe.set_user("Administrator")
+        pr = frappe.get_doc("Payment Request", data["payment_request"])
+
+        frappe.set_user(PAYMENT_PROCESSOR_USER)
+        try:
+            self.assertTrue(frappe.has_permission(TAX_TEMPLATE_DOCTYPE, "select"),
+                            "the processor cannot resolve the inter-state template")
+            self.assertFalse(frappe.has_permission(TAX_TEMPLATE_DOCTYPE, "read"),
+                             "`select` is all the ERPNext gate asks for")
+
+            # NOT `Sales Order`: the processor holds a document-specific DocShare
+            # on the order it just committed, and Frappe answers doctype-level
+            # `read` true for a user who has any shared document of that type.
+            # The real boundary is that the share is one read-only row for this
+            # one order, asserted below.
+            for doctype in ("Customer", "Payment Request"):
+                with self.subTest(doctype=doctype):
+                    self.assertFalse(frappe.has_permission(doctype, "read"))
+        finally:
+            frappe.set_user("Administrator")
+
+        shares = frappe.get_all(
+            "DocShare",
+            filters={"share_doctype": "Sales Order",
+                     "share_name": pr.reference_name},
+            fields=["user", "read", "write", "share", "submit", "everyone"])
+
+        self.assertEqual(len(shares), 1, f"expected one share, got {shares}")
+        self.assertEqual(shares[0]["user"], PAYMENT_PROCESSOR_USER)
+        self.assertEqual(shares[0]["read"], 1)
+        for field in ("write", "share", "submit", "everyone"):
+            with self.subTest(field=field):
+                self.assertEqual(shares[0][field], 0)
 
 
 if __name__ == "__main__":

@@ -398,5 +398,143 @@ class ContentPlacementInstallCase(unittest.TestCase):
             frappe.db.count("Workspace Sidebar", {"module": "yob_storefront"}), 1)
 
 
+class CustomerStorefrontPanelFieldsCase(unittest.TestCase):
+    """The Customer > YOB Storefront Users panel: the fields, and WHERE they are.
+
+    WHY PLACEMENT IS TESTED AT ALL
+    ------------------------------
+    The panel is rendered into an HTML custom field, so its position is decided
+    by `insert_after` and resolved by `frappe.model.meta.Meta.sort_fields`. That
+    resolution walks FORWARD from the anchor looking for the end of the current
+    section, and it stops only at a Section Break or at another field of the
+    anchor's own fieldtype -- a **Tab Break is neither**. Anchoring the section
+    on `portal_users` (the last field of the Portal Users tab) therefore walked
+    straight into the next tab and the panel appeared under More Info; the
+    anchor is the Tab Break itself for that reason.
+
+    Nothing in YOB controls that algorithm. A Frappe or ERPNext upgrade that
+    renames `portal_users_tab`, reorders the Customer DocType or changes the
+    scan would move the panel silently -- the fields would still exist, the
+    adapter would still work, and administrators would simply stop finding it.
+    This is the test that fails instead.
+
+    It asserts metadata, never rendering. Whether the panel DRAWS correctly
+    stays a manual browser check.
+    """
+
+    SECTION = "custom_yob_storefront_users_section"
+    HTML = "custom_yob_storefront_users_html"
+    TAB = "portal_users_tab"
+    LABEL = "YOB Storefront Users"
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+        self.meta = frappe.get_meta("Customer")
+        self.order = [field.fieldname for field in self.meta.fields]
+
+    def test_both_fields_exist_on_customer(self):
+        for fieldname in (self.SECTION, self.HTML):
+            with self.subTest(field=fieldname):
+                self.assertIsNotNone(
+                    self.meta.get_field(fieldname),
+                    f"Customer.{fieldname} was never installed; run bench migrate")
+
+    def test_the_section_is_a_labelled_section_break(self):
+        field = self.meta.get_field(self.SECTION)
+
+        self.assertEqual(field.fieldtype, "Section Break")
+        self.assertEqual(field.label, self.LABEL)
+
+    def test_the_panel_is_an_html_field(self):
+        field = self.meta.get_field(self.HTML)
+
+        self.assertEqual(field.fieldtype, "HTML")
+        self.assertEqual(field.label, self.LABEL)
+
+    def test_the_section_sits_between_portal_users_and_more_info(self):
+        self.assertLess(self.order.index("portal_users"),
+                        self.order.index(self.SECTION),
+                        "the YOB section moved ABOVE the ERPNext portal users grid")
+        self.assertLess(self.order.index(self.SECTION),
+                        self.order.index(self.HTML),
+                        "the HTML panel is no longer inside its own section")
+        self.assertLess(self.order.index(self.HTML),
+                        self.order.index("more_info_tab"),
+                        "the YOB panel has moved out of the Portal Users tab and "
+                        "into the next tab; check Meta.sort_fields and the "
+                        "`insert_after` anchor in install.ensure_custom_fields")
+
+    def test_the_panel_is_inside_the_portal_users_tab(self):
+        """The decisive check: the nearest PRECEDING Tab Break must be ours.
+
+        Index comparisons alone would still pass if a new tab were inserted
+        between `portal_users` and the YOB section.
+        """
+
+        tabs = [field.fieldname for field in self.meta.fields
+                if field.fieldtype == "Tab Break"]
+        self.assertIn(self.TAB, tabs,
+                      "ERPNext no longer has a Portal Users tab; the panel's "
+                      "anchor has to be reconsidered")
+
+        preceding = [name for name in self.order[:self.order.index(self.SECTION)]
+                     if name in tabs]
+
+        self.assertEqual(preceding[-1], self.TAB,
+                         f"the panel now renders under the {preceding[-1]!r} tab")
+
+    def test_the_section_is_anchored_on_the_tab_break_itself(self):
+        """Not on `portal_users`: see the class docstring for what that did."""
+
+        self.assertEqual(
+            frappe.db.get_value("Custom Field",
+                                {"dt": "Customer", "fieldname": self.SECTION},
+                                "insert_after"),
+            self.TAB)
+
+    # ------------------------------------------------------- no mirror table
+
+    def test_yob_adds_exactly_these_two_fields_to_customer(self):
+        """A third YOB field on Customer is a design change, not a detail."""
+
+        yob_fields = frappe.get_all(
+            "Custom Field",
+            filters={"dt": "Customer", "fieldname": ["like", "custom_yob%"]},
+            fields=["fieldname", "fieldtype"], order_by="fieldname")
+
+        self.assertEqual(
+            {row.fieldname: row.fieldtype for row in yob_fields},
+            {self.SECTION: "Section Break", self.HTML: "HTML"})
+
+    def test_no_child_table_mirrors_the_access_records(self):
+        """`YOB User Application Access` stays the single source of truth.
+
+        A grid would be the obvious way to get a native Desk editing experience,
+        and it is exactly what this design refused: a persisted child table on
+        Customer would be a SECOND store of who may use the storefront, and the
+        two would drift. The panel reads the access records live instead.
+        """
+
+        for field in frappe.get_all("Custom Field", filters={"dt": "Customer"},
+                                    fields=["fieldname", "fieldtype", "options"]):
+            with self.subTest(field=field.fieldname):
+                self.assertNotIn(
+                    field.fieldtype, ("Table", "Table MultiSelect"),
+                    f"Customer.{field.fieldname} is a child table added by a "
+                    "custom field; storefront access must not be mirrored")
+
+    def test_no_storefront_owned_child_table_is_attached_to_customer(self):
+        """The same claim from the other side: via the DocType, not the field."""
+
+        for field in self.meta.fields:
+            if field.fieldtype not in ("Table", "Table MultiSelect"):
+                continue
+            module = frappe.db.get_value("DocType", field.options, "module")
+            with self.subTest(table=field.options):
+                self.assertNotEqual(
+                    module, "yob_storefront",
+                    f"Customer.{field.fieldname} holds storefront-owned rows")
+
+
 if __name__ == "__main__":
     unittest.main()
